@@ -109,53 +109,51 @@ class GolfGreen(Widget):
 
             local_x = touch.x - self.x
             local_y = touch.y - self.y
-            phx = local_x / max(1.0, self.width)
-            phy = local_y / max(1.0, self.height)
-            print(f"pos_hint: ({phx:.4f}, {phy:.4f})")
 
-            # After all scoring and updates
-            self.ball_x = local_x
-            self.ball_y = local_y
-            return True
-
-            max_dist = math.hypot(max(1, self.width), max(1, self.height))
-            sb = get_or_create_scoreboard()
-            results = []
-
-            for i, hole in enumerate(self.holes):
-                hx, hy = self.get_scaled_hole_pos(hole)
-                local_hx = hx - self.x
-                local_hy = hy - self.y
-                dist = math.hypot(local_hx - local_x, local_hy - local_y)
-                points = self.distance_to_reading(dist, max_dist)
-
-                new_hole = hole.copy()
-                new_hole["last_points"] = points
-                self.holes[i] = new_hole
-                self.holes = list(self.holes)
-
-                self.live_points_by_hole[new_hole["id"]] = points
-                results.append((new_hole["id"], points))
-                if sb:
-                    sb.set_reading(new_hole["id"], points)
-
-            if results:
-                nearest = min(results, key=lambda t: t[1])
-                self.live_text = str(nearest[1])
-                hit = nearest[1] == 0
-                current_player = self.get_current_player()
-                score = MAX_READING if hit else 0
-                if current_player:
-                    self.player_scores[current_player].append(score)
-                    print(f"{current_player} scored {score} in round {self.current_round}")
-            else:
-                self.live_text = ""
-
+            self._handle_touch(local_x, local_y)
             return True
         except Exception:
             print("Unhandled exception in on_touch_down:")
             traceback.print_exc()
             return True
+
+    def _handle_touch(self, local_x, local_y):
+        max_dist = math.hypot(max(1, self.width), max(1, self.height))
+        sb = get_or_create_scoreboard()
+        results = []
+
+        for i, hole in enumerate(self.holes):
+            hx, hy = self.get_scaled_hole_pos(hole)
+            local_hx = hx - self.x
+            local_hy = hy - self.y
+            dist = math.hypot(local_hx - local_x, local_hy - local_y)
+            points = self.distance_to_reading(dist, max_dist)
+
+            new_hole = hole.copy()
+            new_hole["last_points"] = points
+            self.holes[i] = new_hole
+            self.holes = list(self.holes)
+
+            self.live_points_by_hole[new_hole["id"]] = points
+            results.append((new_hole["id"], points))
+            if sb:
+                sb.set_reading(new_hole["id"], points)
+
+        if results:
+            nearest = min(results, key=lambda t: t[1])
+            self.live_text = str(nearest[1])
+            hit = nearest[1] == 0
+            current_player = self.get_current_player()
+            score = MAX_READING if hit else 0
+            if current_player:
+                self.player_scores[current_player].append(score)
+                print(f"{current_player} scored {score} in round {self.current_round}")
+        else:
+            self.live_text = ""
+
+        # Move ball AFTER scoring
+        self.ball_x = local_x
+        self.ball_y = local_y
 
     def distance_to_reading(self, dist, max_dist):
         norm = 0.0 if (max_dist is None or max_dist <= 0) else min(1.0, dist / max_dist)
