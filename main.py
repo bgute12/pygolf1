@@ -9,8 +9,8 @@ from kivy.uix.boxlayout import BoxLayout
 HOLES = [
     {"id": 1, "pos_hint": (0.0874, 0.6573), "radius": 7, "last_points": None},
     {"id": 2, "pos_hint": (0.3669, 0.8375), "radius": 7, "last_points": None},
-    {"id": 3, "pos_hint": (0.25, 0.50), "radius": 7, "last_points": None},
-    {"id": 4, "pos_hint": (0.3125, 0.4420), "radius": 7, "last_points": None},
+    {"id": 3, "pos_hint": (0.2116, 0.2198), "radius": 7, "last_points": None},
+    {"id": 4, "pos_hint": (0.7306, 0.1486), "radius": 7, "last_points": None},
     {"id": 5, "pos_hint": (0.9144, 0.3375), "radius": 7, "last_points": None},
 ]
 
