@@ -11,7 +11,7 @@ HOLES = [
     {"id": 2, "pos_hint": (0.20, 0.299), "radius": 7, "last_points": None},
     {"id": 3, "pos_hint": (0.25, 0.50), "radius": 7, "last_points": None},
     {"id": 4, "pos_hint": (0.3125, 0.4420), "radius": 7, "last_points": None},
-    {"id": 5, "pos_hint": (0.40, 0.50), "radius": 7, "last_points": None},
+    {"id": 5, "pos_hint": (0.9144, 0.3375), "radius": 7, "last_points": None},
 ]
 
 MIN_READING = 0
