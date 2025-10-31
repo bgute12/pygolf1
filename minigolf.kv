@@ -8,7 +8,7 @@
 
         # background image that preserves aspect ratio
         Image:
-            source: "background.jpeg"
+            source: "background.png"
             fit_mode: "contain"
             size_hint: 1, 1
             pos: self.parent.pos
@@ -59,58 +59,3 @@
                     pos: (golf.x + golf.ball_x - 10, golf.y + golf.ball_y - 10)
                     size: (20, 20)
 
-    # Right: scoreboard pane
-    BoxLayout:
-        orientation: "vertical"
-        size_hint_x: 0.25
-        spacing: 8
-
-        Label:
-            text: "Scoreboard"
-            size_hint_y: None
-            height: 40
-            bold: True
-
-        ScrollView:
-            do_scroll_x: False
-            do_scroll_y: True
-
-            GridLayout:
-                cols: 1
-                size_hint_y: None
-                height: self.minimum_height
-                spacing: 4
-                padding: 0
-
-                Label:
-                    id: scoreboard_text
-                    text: root.ids.scoreboard_widget.display_text if root.ids.get('scoreboard_widget') else "No readings yet"
-                    halign: "left"
-                    valign: "top"
-                    text_size: self.width, None
-                    size_hint_y: None
-                    height: self.texture_size[1]
-
-                Label:
-                    text: "Nearest Hole Pts: " + (root.ids.golf.live_text if root.ids.get('golf') else "-")
-                    size_hint_y: None
-                    height: 40
-                    halign: "left"
-                    valign: "middle"
-                    text_size: self.width, None
-
-        BoxLayout:
-            size_hint_y: None
-            height: 44
-            spacing: 6
-
-            Button:
-                text: "Reset"
-                on_release:
-                    if root.ids.get('scoreboard_widget'): root.ids.scoreboard_widget.clear()
-
-# Provide hidden Scoreboard so root.ids always has it
-Scoreboard:
-    id: scoreboard_widget
-    size_hint_x: None
-    width: 0
