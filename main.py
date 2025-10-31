@@ -7,8 +7,8 @@ from kivy.uix.boxlayout import BoxLayout
 
 # Holes defined with pos_hint (relative coordinates inside the green)
 HOLES = [
-    {"id": 1, "pos_hint": (0.75, 0.50), "radius": 28, "last_points": None},
-    {"id": 2, "pos_hint": (0.25, 0.36), "radius": 28, "last_points": None},
+    {"id": 1, "pos_hint": (0, 0.10), "radius": 10, "last_points": None},
+    {"id": 2, "pos_hint": (0.20, 0.299), "radius": 10, "last_points": None},
 ]
 
 MIN_READING = 0
