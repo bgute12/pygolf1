@@ -78,6 +78,10 @@ class GolfGreen(Widget):
 
             local_x = touch.x - self.x
             local_y = touch.y - self.y
+            
+            phx = local_x / max(1.0, self.width)
+            phy = local_y / max(1.0, self.height)
+            print(f"pos_hint: ({phx:.4f}, {phy:.4f})")
 
             # show ball
             self.ball_x = local_x
