@@ -113,8 +113,10 @@ class GolfGreen(Widget):
             phy = local_y / max(1.0, self.height)
             print(f"pos_hint: ({phx:.4f}, {phy:.4f})")
 
+            # After all scoring and updates
             self.ball_x = local_x
             self.ball_y = local_y
+            return True
 
             max_dist = math.hypot(max(1, self.width), max(1, self.height))
             sb = get_or_create_scoreboard()
