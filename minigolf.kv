@@ -1,0 +1,105 @@
+<RootWidget>:
+    orientation: "horizontal"
+    padding: 6
+    spacing: 6
+
+    FloatLayout:
+        size_hint_x: 0.75
+
+        # green background
+        canvas:
+            Color:
+                rgba: 0.15, 0.6, 0.15, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        GolfGreen:
+            id: golf
+            size: self.size
+            pos: self.pos
+
+        # single hole drawn offset by golf.x/golf.y (local coordinates)
+        Widget:
+            canvas:
+                Color:
+                    rgba: 0, 0, 0, 1
+                Ellipse:
+                    pos: (golf.x + golf.holes[0]['pos'][0] - golf.holes[0]['radius'], golf.y + golf.holes[0]['pos'][1] - golf.holes[0]['radius'])
+                    size: (golf.holes[0]['radius']*2, golf.holes[0]['radius']*2)
+
+        # ball visual (hidden if offscreen)
+        Widget:
+            canvas:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Ellipse:
+                    pos: (golf.x + golf.ball_x - 10, golf.y + golf.ball_y - 10)
+                    size: (20, 20)
+
+        # live points label positioned over the hole (uses golf.live_text)
+        Label:
+            text: "Pts: " + (golf.live_text or "-")
+            size_hint: None, None
+            size: 128, 48
+            halign: "center"
+            valign: "middle"
+            text_size: self.size
+            font_size: 30
+            pos: (golf.x + golf.holes[0]['pos'][0] - self.width / 2, golf.y + golf.holes[0]['pos'][1] + golf.holes[0]['radius'])
+
+    # Right: scoreboard pane
+    BoxLayout:
+        orientation: "vertical"
+        size_hint_x: 0.25
+        spacing: 8
+
+        Label:
+            text: "Scoreboard"
+            size_hint_y: None
+            height: 40
+            bold: True
+
+        ScrollView:
+            do_scroll_x: False
+            do_scroll_y: True
+
+            GridLayout:
+                cols: 1
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: 4
+                padding: 0
+
+                Label:
+                    id: scoreboard_text
+                    text: root.ids.scoreboard_widget.display_text if root.ids.get('scoreboard_widget') else "No readings yet"
+                    halign: "left"
+                    valign: "top"
+                    text_size: self.width, None
+                    size_hint_y: None
+                    height: self.texture_size[1]
+
+                Label:
+                    text: "Live pts: " + root.live_pts
+                    size_hint_y: None
+                    height: 40
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.width, None
+
+        BoxLayout:
+            size_hint_y: None
+            height: 44
+            spacing: 6
+
+            Button:
+                text: "Reset"
+                on_release:
+                    if root.ids.get('scoreboard_widget'): root.ids.scoreboard_widget.clear()
+
+# Provide hidden Scoreboard so root.ids always has it
+Scoreboard:
+    id: scoreboard_widget
+    size_hint_x: None
+    width: 0
