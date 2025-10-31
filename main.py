@@ -1,44 +1,42 @@
-# main.py
 import math
-import time
 import traceback
 from kivy.app import App
-from kivy.properties import ListProperty, NumericProperty, StringProperty
+from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
-from kivy.clock import Clock
 
-# Single hole (local coordinates inside GolfGreen)
+# Holes defined with pos_hint (relative coordinates inside the green)
 HOLES = [
-    {"id": 1, "pos": (450, 250), "radius": 28},
+    {"id": 1, "pos_hint": (0.75, 0.50), "radius": 28, "last_points": None},
+    {"id": 2, "pos_hint": (0.25, 0.36), "radius": 28, "last_points": None},
 ]
 
-# Reading range 1..5 (1 = closest, 5 = farthest)
 MIN_READING = 0
-MAX_READING = 6
+MAX_READING = 10
 
 class Scoreboard(Widget):
-    scores = ListProperty([])
+    readings = DictProperty({})      # { hole_id: points }
     display_text = StringProperty("No readings yet")
 
     def _update_display(self):
-        if not self.scores:
+        if not self.readings:
             self.display_text = "No readings yet"
-        else:
-            lines = [f"H{int(s['hole'])}: {int(s['points'])}" for s in self.scores]
-            self.display_text = "\n".join(lines)
+            return
+        lines = []
+        for hid in sorted(self.readings.keys()):
+            pts = self.readings[hid]
+            lines.append(f"H{int(hid)}: {int(pts)}")
+        self.display_text = "\n".join(lines)
 
-    def on_scores(self, instance, value):
+    def on_readings(self, instance, value):
         self._update_display()
 
-    def add_score(self, hole, points):
-        # newest first, keep recent entries
-        self.scores.insert(0, {"hole": hole, "points": points, "time": int(time.time())})
-        self.scores = self.scores[:20]
+    def set_reading(self, hole, points):
+        self.readings[hole] = points
         self._update_display()
 
     def clear(self):
-        self.scores = []
+        self.readings = {}
         self._update_display()
 
 def get_or_create_scoreboard():
@@ -60,72 +58,81 @@ def get_or_create_scoreboard():
     return sb
 
 class GolfGreen(Widget):
-    live_text = StringProperty("")
+    live_text = StringProperty("")            # nearest hole quick display
+    live_points_by_hole = DictProperty({})    # map hole_id->last points
     ball_x = NumericProperty(-1000)
     ball_y = NumericProperty(-1000)
     holes = ListProperty(HOLES)
+
+    def get_scaled_hole_pos(self, hole):
+        """Return (x, y) pixel coords for a hole dict with pos_hint inside this widget."""
+        phx, phy = hole.get("pos_hint", (0.5, 0.5))
+        px = self.x + phx * max(0, self.width)
+        py = self.y + phy * max(0, self.height)
+        return px, py
 
     def on_touch_down(self, touch):
         try:
             if not self.collide_point(*touch.pos):
                 return False
 
-            # convert to local coordinates
             local_x = touch.x - self.x
             local_y = touch.y - self.y
 
-            # place ball visually
+            # show ball
             self.ball_x = local_x
             self.ball_y = local_y
 
-            # Since there's only one hole, use it directly
-            target = self.holes[0] if self.holes else None
-            if not target:
-                return True
-            hx, hy = target["pos"]
-            dist = math.hypot(hx - local_x, hy - local_y)
-
-            # normalize by the green diagonal so mapping is consistent
             max_dist = math.hypot(max(1, self.width), max(1, self.height))
-            points = self.distance_to_reading_1_to_5(dist, max_dist)
-
             sb = get_or_create_scoreboard()
-            if sb:
-                sb.add_score(target["id"], points)
+            results = []
+
+            # compute for every hole, update hole dicts so KV sees change
+            for i, hole in enumerate(self.holes):
+                hx, hy = self.get_scaled_hole_pos(hole)
+                # convert hx/hy into local coords inside the green (relative to self.x/self.y)
+                local_hx = hx - self.x
+                local_hy = hy - self.y
+                dist = math.hypot(local_hx - local_x, local_hy - local_y)
+                points = self.distance_to_reading(dist, max_dist)
+
+                new_hole = hole.copy()
+                new_hole["last_points"] = points
+                # replace and reassign to trigger ListProperty notifications
+                self.holes[i] = new_hole
+                self.holes = list(self.holes)
+
+                self.live_points_by_hole[new_hole["id"]] = points
+                results.append((new_hole["id"], points))
+                if sb:
+                    sb.set_reading(new_hole["id"], points)
+
+            # update live_text showing the nearest hole (smallest points == nearest)
+            if results:
+                nearest = min(results, key=lambda t: t[1])
+                self.live_text = str(nearest[1])
             else:
-                print("Scoreboard missing; reading:", target["id"], points)
+                self.live_text = ""
+
+            # debug print
+            print(f"Touch local: ({local_x:.1f}, {local_y:.1f}); readings: {self.live_points_by_hole}")
+
             return True
         except Exception:
             print("Unhandled exception in on_touch_down:")
             traceback.print_exc()
             return True
 
-    def distance_to_reading_1_to_5(self, dist, max_dist):
-        """
-        Map distance (0..max_dist) to integer reading 1..5 (1 = closest, 5 = farthest).
-        Safely handles max_dist == 0 and updates self.live_text (requires live_text = StringProperty("") on the class).
-        """
+    def distance_to_reading(self, dist, max_dist):
+        """Map distance (0..max_dist) to integer reading MIN_READING..MAX_READING."""
         norm = 0.0 if (max_dist is None or max_dist <= 0) else min(1.0, dist / max_dist)
         cont = MIN_READING + norm * (MAX_READING - MIN_READING)
         pts = int(round(cont))
         pts = max(MIN_READING, min(MAX_READING, pts))
-        # update live_text for KV binding
-        try:
-            self.live_text = str(pts)
-        except Exception:
-            pass
-        print(pts)
         return pts
 
 class RootWidget(BoxLayout):
-    live_pts = StringProperty("-")
-
-    def on_kv_post(self, base_widget):
-        # bind golf.live_text -> root.live_pts once ids are available
-        golf = self.ids.get("golf")
-        if golf:
-            self.live_pts = golf.live_text
-            golf.bind(live_text=lambda inst, val: setattr(self, "live_pts", val))
+    pass
 
 class MiniGolfApp(App):
     def build(self):

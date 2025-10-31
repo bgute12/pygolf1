@@ -6,29 +6,51 @@
     FloatLayout:
         size_hint_x: 0.75
 
-        # green background
-        canvas:
-            Color:
-                rgba: 0.15, 0.6, 0.15, 1
-            Rectangle:
-                pos: self.pos
-                size: self.size
+        # background image that preserves aspect ratio
+        Image:
+            source: "background.jpeg"
+            fit_mode: "contain"
+            size_hint: 1, 1
+            pos: self.parent.pos
 
         GolfGreen:
             id: golf
             size: self.size
             pos: self.pos
 
-        # single hole drawn offset by golf.x/golf.y (local coordinates)
+        # Hole 1 (drawn using scaled position)
+# Hole 1
         Widget:
             canvas:
                 Color:
-                    rgba: 0, 0, 0, 1
+                    rgba: 1, 1, 1, 1
                 Ellipse:
-                    pos: (golf.x + golf.holes[0]['pos'][0] - golf.holes[0]['radius'], golf.y + golf.holes[0]['pos'][1] - golf.holes[0]['radius'])
+                    pos: (golf.get_scaled_hole_pos(golf.holes[0])[0] - golf.holes[0]['radius'], golf.get_scaled_hole_pos(golf.holes[0])[1] - golf.holes[0]['radius'])
                     size: (golf.holes[0]['radius']*2, golf.holes[0]['radius']*2)
+        Label:
+            text: "H1: " + (str(golf.holes[0].get('last_points')) if golf.holes[0].get('last_points') is not None else "-")
+            size_hint: None, None
+            size: 100, 32
+            font_size: 20
+            pos: (golf.get_scaled_hole_pos(golf.holes[0])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[0])[1] + golf.holes[0]['radius'])
 
-        # ball visual (hidden if offscreen)
+        # Hole 2
+        # Hole 2
+        Widget:
+            canvas:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Ellipse:
+                    pos: (golf.get_scaled_hole_pos(golf.holes[1])[0] - golf.holes[1]['radius'], golf.get_scaled_hole_pos(golf.holes[1])[1] - golf.holes[1]['radius'])
+                    size: (golf.holes[1]['radius']*2, golf.holes[1]['radius']*2)
+        Label:
+            text: "H2: " + (str(golf.holes[1].get('last_points')) if golf.holes[1].get('last_points') is not None else "-")
+            size_hint: None, None
+            size: 100, 32
+            font_size: 20
+            pos: (golf.get_scaled_hole_pos(golf.holes[1])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[1])[1] + golf.holes[1]['radius'])
+
+        # ball visual
         Widget:
             canvas:
                 Color:
@@ -36,17 +58,6 @@
                 Ellipse:
                     pos: (golf.x + golf.ball_x - 10, golf.y + golf.ball_y - 10)
                     size: (20, 20)
-
-        # live points label positioned over the hole (uses golf.live_text)
-        Label:
-            text: "Pts: " + (golf.live_text or "-")
-            size_hint: None, None
-            size: 128, 48
-            halign: "center"
-            valign: "middle"
-            text_size: self.size
-            font_size: 30
-            pos: (golf.x + golf.holes[0]['pos'][0] - self.width / 2, golf.y + golf.holes[0]['pos'][1] + golf.holes[0]['radius'])
 
     # Right: scoreboard pane
     BoxLayout:
@@ -81,7 +92,7 @@
                     height: self.texture_size[1]
 
                 Label:
-                    text: "Live pts: " + root.live_pts
+                    text: "Nearest Hole Pts: " + (root.ids.golf.live_text if root.ids.get('golf') else "-")
                     size_hint_y: None
                     height: 40
                     halign: "left"
