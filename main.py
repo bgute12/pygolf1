@@ -5,7 +5,6 @@ from kivy.properties import ListProperty, NumericProperty, StringProperty, DictP
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
 
-# Holes defined with pos_hint (relative coordinates inside the green)
 HOLES = [
     {"id": 1, "pos_hint": (0.1101, 0.6734), "radius": 8, "last_points": None},
     {"id": 2, "pos_hint": (0.3661, 0.8421), "radius": 8, "last_points": None},
@@ -16,19 +15,18 @@ HOLES = [
 
 MIN_READING = 0
 MAX_READING = 10
+MAX_PLAYERS = 3
+MAX_ROUNDS = 10
 
 class Scoreboard(Widget):
-    readings = DictProperty({})      # { hole_id: points }
+    readings = DictProperty({})
     display_text = StringProperty("No readings yet")
 
     def _update_display(self):
         if not self.readings:
             self.display_text = "No readings yet"
             return
-        lines = []
-        for hid in sorted(self.readings.keys()):
-            pts = self.readings[hid]
-            lines.append(f"H{int(hid)}: {int(pts)}")
+        lines = [f"H{int(hid)}: {int(pts)}" for hid, pts in sorted(self.readings.items())]
         self.display_text = "\n".join(lines)
 
     def on_readings(self, instance, value):
@@ -61,14 +59,39 @@ def get_or_create_scoreboard():
     return sb
 
 class GolfGreen(Widget):
-    live_text = StringProperty("")            # nearest hole quick display
-    live_points_by_hole = DictProperty({})    # map hole_id->last points
+    players = ListProperty([])
+    current_player_index = NumericProperty(0)
+    current_round = NumericProperty(1)
+    player_scores = DictProperty({})
+    live_text = StringProperty("")
+    live_points_by_hole = DictProperty({})
     ball_x = NumericProperty(-1000)
     ball_y = NumericProperty(-1000)
     holes = ListProperty(HOLES)
 
+    def register_players(self, names):
+        self.players = [name.strip() for name in names if name.strip()][:MAX_PLAYERS]
+        self.current_player_index = 0
+        self.current_round = 1
+        self.player_scores = {name: [] for name in self.players}
+        print(f"Registered players: {self.players}")
+
+    def get_current_player(self):
+        return self.players[self.current_player_index] if self.players else None
+
+    def next_player(self):
+        if not self.players:
+            return
+        self.current_player_index += 1
+        if self.current_player_index >= len(self.players):
+            self.current_player_index = 0
+            self.current_round += 1
+            if self.current_round > MAX_ROUNDS:
+                print("Game over!")
+                return
+        print(f"Next turn: {self.get_current_player()} (Round {self.current_round})")
+
     def get_scaled_hole_pos(self, hole):
-        """Return (x, y) pixel coords for a hole dict with pos_hint inside this widget."""
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
         px = self.x + phx * max(0, self.width)
         py = self.y + phy * max(0, self.height)
@@ -81,12 +104,10 @@ class GolfGreen(Widget):
 
             local_x = touch.x - self.x
             local_y = touch.y - self.y
-            
             phx = local_x / max(1.0, self.width)
             phy = local_y / max(1.0, self.height)
             print(f"pos_hint: ({phx:.4f}, {phy:.4f})")
 
-            # show ball
             self.ball_x = local_x
             self.ball_y = local_y
 
@@ -94,10 +115,8 @@ class GolfGreen(Widget):
             sb = get_or_create_scoreboard()
             results = []
 
-            # compute for every hole, update hole dicts so KV sees change
             for i, hole in enumerate(self.holes):
                 hx, hy = self.get_scaled_hole_pos(hole)
-                # convert hx/hy into local coords inside the green (relative to self.x/self.y)
                 local_hx = hx - self.x
                 local_hy = hy - self.y
                 dist = math.hypot(local_hx - local_x, local_hy - local_y)
@@ -105,7 +124,6 @@ class GolfGreen(Widget):
 
                 new_hole = hole.copy()
                 new_hole["last_points"] = points
-                # replace and reassign to trigger ListProperty notifications
                 self.holes[i] = new_hole
                 self.holes = list(self.holes)
 
@@ -114,15 +132,17 @@ class GolfGreen(Widget):
                 if sb:
                     sb.set_reading(new_hole["id"], points)
 
-            # update live_text showing the nearest hole (smallest points == nearest)
             if results:
                 nearest = min(results, key=lambda t: t[1])
                 self.live_text = str(nearest[1])
+                hit = nearest[1] == 0
+                current_player = self.get_current_player()
+                score = MAX_READING if hit else 0
+                if current_player:
+                    self.player_scores[current_player].append(score)
+                    print(f"{current_player} scored {score} in round {self.current_round}")
             else:
                 self.live_text = ""
-
-            # debug print
-            print(f"Touch local: ({local_x:.1f}, {local_y:.1f}); readings: {self.live_points_by_hole}")
 
             return True
         except Exception:
@@ -131,12 +151,10 @@ class GolfGreen(Widget):
             return True
 
     def distance_to_reading(self, dist, max_dist):
-        """Map distance (0..max_dist) to integer reading MIN_READING..MAX_READING."""
         norm = 0.0 if (max_dist is None or max_dist <= 0) else min(1.0, dist / max_dist)
         cont = MIN_READING + norm * (MAX_READING - MIN_READING)
         pts = int(round(cont))
-        pts = max(MIN_READING, min(MAX_READING, pts))
-        return pts
+        return max(MIN_READING, min(MAX_READING, pts))
 
 class RootWidget(BoxLayout):
     pass
