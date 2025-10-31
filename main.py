@@ -69,12 +69,17 @@ class GolfGreen(Widget):
     ball_y = NumericProperty(-1000)
     holes = ListProperty(HOLES)
 
-    def register_players(self, names):
-        self.players = [name.strip() for name in names if name.strip()][:MAX_PLAYERS]
+    def add_player_name(self, name):
+        name = name.strip()
+        if name and name not in self.players and len(self.players) < MAX_PLAYERS:
+            self.players.append(name)
+            self.player_scores[name] = []
+            print(f"Added player: {name}")
+
+    def register_players(self):
         self.current_player_index = 0
         self.current_round = 1
-        self.player_scores = {name: [] for name in self.players}
-        print(f"Registered players: {self.players}")
+        print(f"Starting game with players: {self.players}")
 
     def get_current_player(self):
         return self.players[self.current_player_index] if self.players else None

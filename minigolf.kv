@@ -17,18 +17,76 @@
             size: self.size
             pos: self.pos
 
-        # Draw holes dynamically
+        # Holes and labels
         Widget:
             canvas:
                 Color:
                     rgba: 1, 1, 1, 1
-                # Draw each hole
-                InstructionGroup:
-                    id: hole_group
-                    canvas:
-                        Color:
-                            rgba: 1, 1, 1, 1
-                        # This will be populated in Python if needed
+                Ellipse:
+                    pos: (golf.get_scaled_hole_pos(golf.holes[0])[0] - golf.holes[0]['radius'], golf.get_scaled_hole_pos(golf.holes[0])[1] - golf.holes[0]['radius'])
+                    size: (golf.holes[0]['radius'] * 2, golf.holes[0]['radius'] * 2)
+        Label:
+            text: "H1: " + (str(golf.holes[0].get('last_points')) if golf.holes[0].get('last_points') is not None else "-")
+            size_hint: None, None
+            size: 100, 32
+            font_size: 20
+            pos: (golf.get_scaled_hole_pos(golf.holes[0])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[0])[1] + golf.holes[0]['radius'])
+
+        Widget:
+            canvas:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Ellipse:
+                    pos: (golf.get_scaled_hole_pos(golf.holes[1])[0] - golf.holes[1]['radius'], golf.get_scaled_hole_pos(golf.holes[1])[1] - golf.holes[1]['radius'])
+                    size: (golf.holes[1]['radius'] * 2, golf.holes[1]['radius'] * 2)
+        Label:
+            text: "H2: " + (str(golf.holes[1].get('last_points')) if golf.holes[1].get('last_points') is not None else "-")
+            size_hint: None, None
+            size: 100, 32
+            font_size: 20
+            pos: (golf.get_scaled_hole_pos(golf.holes[1])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[1])[1] + golf.holes[1]['radius'])
+
+        Widget:
+            canvas:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Ellipse:
+                    pos: (golf.get_scaled_hole_pos(golf.holes[2])[0] - golf.holes[2]['radius'], golf.get_scaled_hole_pos(golf.holes[2])[1] - golf.holes[2]['radius'])
+                    size: (golf.holes[2]['radius'] * 2, golf.holes[2]['radius'] * 2)
+        Label:
+            text: "H3: " + (str(golf.holes[2].get('last_points')) if golf.holes[2].get('last_points') is not None else "-")
+            size_hint: None, None
+            size: 100, 32
+            font_size: 20
+            pos: (golf.get_scaled_hole_pos(golf.holes[2])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[2])[1] + golf.holes[2]['radius'])
+
+        Widget:
+            canvas:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Ellipse:
+                    pos: (golf.get_scaled_hole_pos(golf.holes[3])[0] - golf.holes[3]['radius'], golf.get_scaled_hole_pos(golf.holes[3])[1] - golf.holes[3]['radius'])
+                    size: (golf.holes[3]['radius'] * 2, golf.holes[3]['radius'] * 2)
+        Label:
+            text: "H4: " + (str(golf.holes[3].get('last_points')) if golf.holes[3].get('last_points') is not None else "-")
+            size_hint: None, None
+            size: 100, 32
+            font_size: 20
+            pos: (golf.get_scaled_hole_pos(golf.holes[3])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[3])[1] + golf.holes[3]['radius'])
+
+        Widget:
+            canvas:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Ellipse:
+                    pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - golf.holes[4]['radius'], golf.get_scaled_hole_pos(golf.holes[4])[1] - golf.holes[4]['radius'])
+                    size: (golf.holes[4]['radius'] * 2, golf.holes[4]['radius'] * 2)
+        Label:
+            text: "H5: " + (str(golf.holes[4].get('last_points')) if golf.holes[4].get('last_points') is not None else "-")
+            size_hint: None, None
+            size: 100, 32
+            font_size: 20
+            pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[4])[1] + golf.holes[4]['radius'])
 
         # Ball visual
         Widget:
@@ -45,24 +103,42 @@
         spacing: 10
         padding: 10
 
+        canvas.before:
+            Color:
+                rgba: 0.2, 0.2, 0.2, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
         Label:
-            text: "Enter Player Names"
+            text: "Add Player Name"
             size_hint_y: None
             height: 30
 
         TextInput:
-            id: player_input
-            hint_text: "Comma-separated names (max 3)"
+            id: name_input
+            hint_text: "Type name and press Enter"
             multiline: False
             size_hint_y: None
             height: 40
+            on_text_validate:
+                golf.add_player_name(self.text)
+                self.text = ""
+
+        Label:
+            text: "Players:\n" + "\n".join(golf.players)
+            text_size: self.width, None
+            halign: "left"
+            valign: "top"
+            size_hint_y: None
+            height: self.texture_size[1]
 
         Button:
             text: "Start Game"
             size_hint_y: None
             height: 40
             on_press:
-                golf.register_players(player_input.text.split(","))
+                golf.register_players()
 
         Button:
             text: "Next Player"
@@ -91,8 +167,11 @@
                 cols: 1
                 size_hint_y: None
                 height: self.minimum_height
+
                 Label:
-                    text: "\\n".join([name + ": " + str(golf.player_scores.get(name, [])) for name in golf.players])
+                    text: "\n".join([name + ": " + str(golf.player_scores.get(name, [])) for name in golf.players])
                     text_size: self.width, None
+                    halign: "left"
+                    valign: "top"
                     size_hint_y: None
                     height: self.texture_size[1]
