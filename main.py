@@ -5,7 +5,6 @@ from kivy.clock import Clock
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
 
 HOLES = [
     {"id": 1, "pos_hint": (0.0913, 0.6378), "radius": 8, "last_points": None},
@@ -19,7 +18,6 @@ MIN_READING = 0
 MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
-
 
 class Scoreboard(Widget):
     readings = DictProperty({})
@@ -43,7 +41,6 @@ class Scoreboard(Widget):
         self.readings = {}
         self._update_display()
 
-
 def get_or_create_scoreboard():
     app = App.get_running_app()
     if not app or not getattr(app, "root", None):
@@ -62,7 +59,6 @@ def get_or_create_scoreboard():
     root.ids["scoreboard_widget"] = sb
     return sb
 
-
 class GolfGreen(Widget):
     players = ListProperty([])
     current_player_index = NumericProperty(0)
@@ -75,14 +71,6 @@ class GolfGreen(Widget):
     ball_y = NumericProperty(-1000)
     holes = ListProperty(HOLES)
     ball_placed = False
-    ignore_first_click = True  # ignore first touch until layout settles
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        Clock.schedule_once(self._enable_clicks, 0.5)
-
-    def _enable_clicks(self, dt):
-        self.ignore_first_click = False
 
     def add_player_name(self, name):
         name = name.strip()
@@ -124,31 +112,20 @@ class GolfGreen(Widget):
         return px, py
 
     def on_touch_down(self, touch):
-        # --- Ignore first click globally ---
-        if self.ignore_first_click:
-            print("Ignoring first touch...")
-            self.ignore_first_click = False
-            return True
-
-        # --- Only respond if touch is inside this widget ---
-        if not self.collide_point(*touch.pos):
-            return False
-
-        # --- Ignore clicks on other widgets ---
-        app = App.get_running_app()
-        if app and getattr(app, "root", None):
-            for wid in app.root.walk(restrict=True):
-                # If it's a button or another visible widget under the touch
-                if wid is not self and wid.collide_point(*touch.pos):
-                    if isinstance(wid, Button) or hasattr(wid, "on_release"):
-                        print("Touch was on another widget, ignoring.")
-                        return False
-
         try:
+            # Ignore if the touch is on a child widget (like a button)
+            if any(child.collide_point(*touch.pos) for child in self.children):
+                return False
+
+            if not self.collide_point(*touch.pos):
+                return False
+
             local_x = touch.x - self.x
             local_y = touch.y - self.y
+
             self._touch_x = local_x
             self._touch_y = local_y
+
             Clock.schedule_once(self._place_ball, 0.05)
             return True
         except Exception:
@@ -209,15 +186,12 @@ class GolfGreen(Widget):
         pts = int(round(cont))
         return max(MIN_READING, min(MAX_READING, pts))
 
-
 class RootWidget(BoxLayout):
     pass
-
 
 class MiniGolfApp(App):
     def build(self):
         return RootWidget()
-
 
 if __name__ == "__main__":
     MiniGolfApp().run()
