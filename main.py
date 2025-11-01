@@ -5,6 +5,9 @@ from kivy.clock import Clock
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+from kivy.uix.slider import Slider
 
 HOLES = [
     {"id": 1, "pos_hint": (0.0913, 0.6378), "radius": 8, "last_points": None},
@@ -113,8 +116,8 @@ class GolfGreen(Widget):
 
     def on_touch_down(self, touch):
         try:
-            # Ignore touches on child widgets (like buttons)
-            if self._touch_is_on_child(touch):
+            # Ignore touches on interactive widgets like buttons, sliders, text inputs
+            if self._touch_is_on_interactive_widget(touch):
                 return False
 
             if not self.collide_point(*touch.pos):
@@ -130,9 +133,9 @@ class GolfGreen(Widget):
             traceback.print_exc()
             return True
 
-    def _touch_is_on_child(self, touch):
+    def _touch_is_on_interactive_widget(self, touch):
         for child in self.walk():
-            if child is not self and child.collide_point(*touch.pos):
+            if isinstance(child, (Button, TextInput, Slider)) and child.collide_point(*touch.pos):
                 return True
         return False
 
