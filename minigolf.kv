@@ -16,6 +16,12 @@
             id: golf
             size: self.size
             pos: self.pos
+            canvas:
+                Color:
+                    rgba: 0, 0, 0, 0
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
 
         # Holes and labels
         Widget:
@@ -88,7 +94,6 @@
             font_size: 20
             pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[4])[1] + golf.holes[4]['radius'])
 
-        # Ball visual
         Widget:
             canvas:
                 Color:
@@ -111,19 +116,26 @@
                 size: self.size
 
         Label:
-            text: "Add Player Name"
+            text: "Select Number of Players"
             size_hint_y: None
             height: 30
 
-        TextInput:
-            id: name_input
-            hint_text: "Type name and press Enter"
-            multiline: False
+        BoxLayout:
             size_hint_y: None
             height: 40
-            on_text_validate:
-                golf.add_player_name(self.text)
-                self.text = ""
+            spacing: 5
+
+            Button:
+                text: "1 Player"
+                on_press: golf.register_players(1)
+
+            Button:
+                text: "2 Players"
+                on_press: golf.register_players(2)
+
+            Button:
+                text: "3 Players"
+                on_press: golf.register_players(3)
 
         Label:
             text: "Players:\n" + "\n".join(golf.players)
@@ -134,18 +146,10 @@
             height: self.texture_size[1]
 
         Button:
-            text: "Start Game"
-            size_hint_y: None
-            height: 40
-            on_press:
-                golf.register_players()
-
-        Button:
             text: "Next Player"
             size_hint_y: None
             height: 40
-            on_press:
-                golf.next_player()
+            on_press: golf.next_player()
 
         Label:
             text: "Current Player: " + (golf.get_current_player() or "-")
