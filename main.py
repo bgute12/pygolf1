@@ -6,11 +6,11 @@ from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
 
 HOLES = [
-    {"id": 1, "pos_hint": (0.1101, 0.6734), "radius": 8, "last_points": None},
-    {"id": 2, "pos_hint": (0.3661, 0.8421), "radius": 8, "last_points": None},
-    {"id": 3, "pos_hint": (0.2116, 0.2198), "radius": 8, "last_points": None},
-    {"id": 4, "pos_hint": (0.7306, 0.1486), "radius": 8, "last_points": None},
-    {"id": 5, "pos_hint": (0.9120, 0.3390), "radius": 8, "last_points": None},
+    {"id": 1, "pos_hint": (0.0913, 0.6378), "radius": 8, "last_points": None},
+    {"id": 2, "pos_hint": (0.3620, 0.7678), "radius": 8, "last_points": None},
+    {"id": 3, "pos_hint": (0.1985, 0.2817), "radius": 8, "last_points": None},
+    {"id": 4, "pos_hint": (0.7452, 0.2276), "radius": 8, "last_points": None},
+    {"id": 5, "pos_hint": (0.9331, 0.3715), "radius": 8, "last_points": None},
 ]
 
 MIN_READING = 0
