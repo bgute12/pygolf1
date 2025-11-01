@@ -59,6 +59,7 @@ def get_or_create_scoreboard():
     root.ids["scoreboard_widget"] = sb
     return sb
 
+
 class GolfGreen(Widget):
     players = ListProperty([])
     current_player_index = NumericProperty(0)
@@ -71,6 +72,9 @@ class GolfGreen(Widget):
     ball_y = NumericProperty(-1000)
     holes = ListProperty(HOLES)
     ball_placed = False
+
+    # 👇 NEW: Add a flag to ignore the first touch
+    first_touch_ignored = False
 
     def add_player_name(self, name):
         name = name.strip()
@@ -119,6 +123,12 @@ class GolfGreen(Widget):
 
             if not self.collide_point(*touch.pos):
                 return False
+
+            # 👇 NEW: Ignore the very first input
+            if not self.first_touch_ignored:
+                print("Ignoring first touch input...")
+                self.first_touch_ignored = True
+                return True
 
             local_x = touch.x - self.x
             local_y = touch.y - self.y
