@@ -113,18 +113,15 @@ class GolfGreen(Widget):
 
     def on_touch_down(self, touch):
         try:
-            # Ignore if the touch is on a child widget (like a button)
-            if any(child.collide_point(*touch.pos) for child in self.children):
+            # Ignore touches on child widgets (like buttons)
+            if self._touch_is_on_child(touch):
                 return False
 
             if not self.collide_point(*touch.pos):
                 return False
 
-            local_x = touch.x - self.x
-            local_y = touch.y - self.y
-
-            self._touch_x = local_x
-            self._touch_y = local_y
+            self._touch_x = touch.x - self.x
+            self._touch_y = touch.y - self.y
 
             Clock.schedule_once(self._place_ball, 0.05)
             return True
@@ -132,6 +129,12 @@ class GolfGreen(Widget):
             print("Unhandled exception in on_touch_down:")
             traceback.print_exc()
             return True
+
+    def _touch_is_on_child(self, touch):
+        for child in self.walk():
+            if child is not self and child.collide_point(*touch.pos):
+                return True
+        return False
 
     def _place_ball(self, dt):
         if self.ball_placed:
