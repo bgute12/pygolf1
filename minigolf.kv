@@ -152,7 +152,7 @@
             on_press: golf.next_player()
 
         Label:
-            text: "Current Player: " + (golf.get_current_player() or "-")
+            text: "Current Player: " + golf.current_player
             size_hint_y: None
             height: 30
 
@@ -160,22 +160,3 @@
             text: "Round: " + str(golf.current_round)
             size_hint_y: None
             height: 30
-
-        Label:
-            text: "Scores:"
-            size_hint_y: None
-            height: 30
-
-        ScrollView:
-            GridLayout:
-                cols: 1
-                size_hint_y: None
-                height: self.minimum_height
-
-                Label:
-                    text: "\n".join([name + ": " + str(golf.player_scores.get(name, [])) for name in golf.players])
-                    text_size: self.width, None
-                    halign: "left"
-                    valign: "top"
-                    size_hint_y: None
-                    height: self.texture_size[1]

@@ -62,12 +62,14 @@ class GolfGreen(Widget):
     players = ListProperty([])
     current_player_index = NumericProperty(0)
     current_round = NumericProperty(1)
+    current_player = StringProperty("")
     player_scores = DictProperty({})
     live_text = StringProperty("")
     live_points_by_hole = DictProperty({})
     ball_x = NumericProperty(-1000)
     ball_y = NumericProperty(-1000)
     holes = ListProperty(HOLES)
+    ball_placed = False
 
     def add_player_name(self, name):
         name = name.strip()
@@ -82,6 +84,7 @@ class GolfGreen(Widget):
         self.player_scores = {name: [] for name in self.players}
         self.current_player_index = 0
         self.current_round = 1
+        self.current_player = self.players[0] if self.players else ""
         print(f"Starting game with players: {self.players}")
 
     def get_current_player(self):
@@ -97,7 +100,9 @@ class GolfGreen(Widget):
             if self.current_round > MAX_ROUNDS:
                 print("Game over!")
                 return
-        print(f"Next turn: {self.get_current_player()} (Round {self.current_round})")
+        self.current_player = self.players[self.current_player_index]
+        print(f"Next turn: {self.current_player} (Round {self.current_round})")
+        self.ball_placed = False
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -121,6 +126,9 @@ class GolfGreen(Widget):
             return True
 
     def _handle_touch(self, local_x, local_y):
+        if self.ball_placed:
+            return  # Ignore additional touches after ball is placed
+
         max_dist = math.hypot(max(1, self.width), max(1, self.height))
         sb = get_or_create_scoreboard()
         results = []
@@ -154,10 +162,11 @@ class GolfGreen(Widget):
         else:
             self.live_text = ""
 
-        # Move ball AFTER scoring
-        self.ball_x = local_x
-        self.ball_y = local_y
-
+        if not self.ball_placed:
+            self.ball_x = local_x
+            self.ball_y = local_y
+            print(f"Ball placed at ({(local_x / self.width) * 100:.1f}%, {(local_y / self.height) * 100:.1f}%)")
+            self.ball_placed = True
     def distance_to_reading(self, dist, max_dist):
         norm = 0.0 if (max_dist is None or max_dist <= 0) else min(1.0, dist / max_dist)
         cont = MIN_READING + norm * (MAX_READING - MIN_READING)
