@@ -115,8 +115,7 @@ class GolfGreen(Widget):
             if not self.collide_point(*touch.pos):
                 return False
 
-            local_x = touch.x - self.x
-            local_y = touch.y - self.y
+            local_x, local_y = self.to_local(*touch.pos)
 
             self._handle_touch(local_x, local_y)
             return True
