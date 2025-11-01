@@ -2,13 +2,9 @@ import math
 import traceback
 from kivy.app import App
 from kivy.clock import Clock
-from kivy.core.window import Window
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.textinput import TextInput
-from kivy.uix.slider import Slider
 
 HOLES = [
     {"id": 1, "pos_hint": (0.0913, 0.6378), "radius": 8, "last_points": None},
@@ -117,12 +113,19 @@ class GolfGreen(Widget):
 
     def on_touch_down(self, touch):
         try:
-            if self._touch_is_on_interactive_widget(touch):
+            # Ignore if the touch is on a child widget (like a button)
+            if any(child.collide_point(*touch.pos) for child in self.children):
                 return False
+
             if not self.collide_point(*touch.pos):
                 return False
 
-            self._touch = touch
+            local_x = touch.x - self.x
+            local_y = touch.y - self.y
+
+            self._touch_x = local_x
+            self._touch_y = local_y
+
             Clock.schedule_once(self._place_ball, 0.05)
             return True
         except Exception:
@@ -130,18 +133,12 @@ class GolfGreen(Widget):
             traceback.print_exc()
             return True
 
-    def _touch_is_on_interactive_widget(self, touch):
-        for child in self.walk():
-            if isinstance(child, (Button, TextInput, Slider)) and child.collide_point(*touch.pos):
-                return True
-        return False
-
     def _place_ball(self, dt):
-        if self.ball_placed or not hasattr(self, "_touch"):
+        if self.ball_placed:
             return
 
-        local_x = self._touch.x - self.x
-        local_y = self._touch.y - self.y
+        local_x = self._touch_x
+        local_y = self._touch_y
 
         max_dist = math.hypot(max(1, self.width), max(1, self.height))
         sb = get_or_create_scoreboard()
@@ -195,18 +192,6 @@ class RootWidget(BoxLayout):
 class MiniGolfApp(App):
     def build(self):
         return RootWidget()
-
-    def on_start(self):
-        Window.bind(on_touch_down=self.delayed_touch_handler)
-
-    def delayed_touch_handler(self, window, touch):
-        Clock.schedule_once(lambda dt: self.dispatch_touch(window, touch), 0.05)
-        return True
-
-    def dispatch_touch(self, window, touch):
-        for widget in window.children[:]:
-            if widget.dispatch('on_touch_down', touch):
-                break
 
 if __name__ == "__main__":
     MiniGolfApp().run()
