@@ -113,6 +113,10 @@ class GolfGreen(Widget):
 
     def on_touch_down(self, touch):
         try:
+            # Ignore if the touch is on a child widget (like a button)
+            if any(child.collide_point(*touch.pos) for child in self.children):
+                return False
+
             if not self.collide_point(*touch.pos):
                 return False
 
