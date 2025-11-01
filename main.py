@@ -76,7 +76,10 @@ class GolfGreen(Widget):
             self.player_scores[name] = []
             print(f"Added player: {name}")
 
-    def register_players(self):
+    def register_players(self, count=1):
+        count = max(1, min(count, MAX_PLAYERS))
+        self.players = [f"Player {i+1}" for i in range(count)]
+        self.player_scores = {name: [] for name in self.players}
         self.current_player_index = 0
         self.current_round = 1
         print(f"Starting game with players: {self.players}")
