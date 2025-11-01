@@ -165,7 +165,9 @@ class GolfGreen(Widget):
         if not self.ball_placed:
             self.ball_x = local_x
             self.ball_y = local_y
-            print(f"Ball placed at ({(local_x / self.width) * 100:.1f}%, {(local_y / self.height) * 100:.1f}%)")
+            percent_x = local_x / float(self.width) if self.width else 0
+            percent_y = local_y / float(self.height) if self.height else 0
+            print(f"Ball pos_hint: ({percent_x:.4f}, {percent_y:.4f})")
             self.ball_placed = True
     def distance_to_reading(self, dist, max_dist):
         norm = 0.0 if (max_dist is None or max_dist <= 0) else min(1.0, dist / max_dist)
