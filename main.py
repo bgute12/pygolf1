@@ -116,16 +116,12 @@ class GolfGreen(Widget):
 
     def on_touch_down(self, touch):
         try:
-            # Ignore touches on interactive widgets like buttons, sliders, text inputs
             if self._touch_is_on_interactive_widget(touch):
                 return False
-
             if not self.collide_point(*touch.pos):
                 return False
 
-            self._touch_x = touch.x - self.x
-            self._touch_y = touch.y - self.y
-
+            self._touch = touch  # Store full touch object
             Clock.schedule_once(self._place_ball, 0.05)
             return True
         except Exception:
@@ -140,11 +136,11 @@ class GolfGreen(Widget):
         return False
 
     def _place_ball(self, dt):
-        if self.ball_placed:
+        if self.ball_placed or not hasattr(self, "_touch"):
             return
 
-        local_x = self._touch_x
-        local_y = self._touch_y
+        local_x = self._touch.x - self.x
+        local_y = self._touch.y - self.y
 
         max_dist = math.hypot(max(1, self.width), max(1, self.height))
         sb = get_or_create_scoreboard()
