@@ -19,6 +19,7 @@ MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
+
 class Scoreboard(Widget):
     readings = DictProperty({})
     display_text = StringProperty("No readings yet")
@@ -40,6 +41,7 @@ class Scoreboard(Widget):
     def clear(self):
         self.readings = {}
         self._update_display()
+
 
 def get_or_create_scoreboard():
     app = App.get_running_app()
@@ -73,8 +75,16 @@ class GolfGreen(Widget):
     holes = ListProperty(HOLES)
     ball_placed = False
 
-    # 👇 NEW: Add a flag to ignore the first touch
-    first_touch_ignored = False
+    # --- NEW FLAG TO IGNORE FIRST CLICK ---
+    ignore_first_click = True
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Wait one frame to allow layout to settle
+        Clock.schedule_once(self._enable_clicks, 0.5)
+
+    def _enable_clicks(self, dt):
+        self.ignore_first_click = False
 
     def add_player_name(self, name):
         name = name.strip()
@@ -116,19 +126,19 @@ class GolfGreen(Widget):
         return px, py
 
     def on_touch_down(self, touch):
+        # --- IGNORE FIRST TOUCH ---
+        if self.ignore_first_click:
+            print("Ignoring first touch...")
+            self.ignore_first_click = False
+            return True
+
         try:
-            # Ignore if the touch is on a child widget (like a button)
+            # Ignore if the touch is on a child widget (like a button or side panel)
             if any(child.collide_point(*touch.pos) for child in self.children):
                 return False
 
             if not self.collide_point(*touch.pos):
                 return False
-
-            # 👇 NEW: Ignore the very first input
-            if not self.first_touch_ignored:
-                print("Ignoring first touch input...")
-                self.first_touch_ignored = True
-                return True
 
             local_x = touch.x - self.x
             local_y = touch.y - self.y
@@ -196,12 +206,15 @@ class GolfGreen(Widget):
         pts = int(round(cont))
         return max(MIN_READING, min(MAX_READING, pts))
 
+
 class RootWidget(BoxLayout):
     pass
+
 
 class MiniGolfApp(App):
     def build(self):
         return RootWidget()
+
 
 if __name__ == "__main__":
     MiniGolfApp().run()
