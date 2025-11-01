@@ -2,6 +2,7 @@ import math
 import traceback
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.core.window import Window
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
@@ -121,7 +122,7 @@ class GolfGreen(Widget):
             if not self.collide_point(*touch.pos):
                 return False
 
-            self._touch = touch  # Store full touch object
+            self._touch = touch
             Clock.schedule_once(self._place_ball, 0.05)
             return True
         except Exception:
@@ -194,6 +195,18 @@ class RootWidget(BoxLayout):
 class MiniGolfApp(App):
     def build(self):
         return RootWidget()
+
+    def on_start(self):
+        Window.bind(on_touch_down=self.delayed_touch_handler)
+
+    def delayed_touch_handler(self, window, touch):
+        Clock.schedule_once(lambda dt: self.dispatch_touch(window, touch), 0.05)
+        return True
+
+    def dispatch_touch(self, window, touch):
+        for widget in window.children[:]:
+            if widget.dispatch('on_touch_down', touch):
+                break
 
 if __name__ == "__main__":
     MiniGolfApp().run()
