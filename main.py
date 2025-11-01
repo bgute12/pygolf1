@@ -1,6 +1,7 @@
 import math
 import traceback
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
@@ -115,18 +116,25 @@ class GolfGreen(Widget):
             if not self.collide_point(*touch.pos):
                 return False
 
-            local_x, local_y = self.to_local(*touch.pos)
+            local_x = touch.x - self.x
+            local_y = touch.y - self.y
 
-            self._handle_touch(local_x, local_y)
+            self._touch_x = local_x
+            self._touch_y = local_y
+
+            Clock.schedule_once(self._place_ball, 0.05)
             return True
         except Exception:
             print("Unhandled exception in on_touch_down:")
             traceback.print_exc()
             return True
 
-    def _handle_touch(self, local_x, local_y):
+    def _place_ball(self, dt):
         if self.ball_placed:
-            return  # Ignore additional touches after ball is placed
+            return
+
+        local_x = self._touch_x
+        local_y = self._touch_y
 
         max_dist = math.hypot(max(1, self.width), max(1, self.height))
         sb = get_or_create_scoreboard()
@@ -161,13 +169,13 @@ class GolfGreen(Widget):
         else:
             self.live_text = ""
 
-        if not self.ball_placed:
-            self.ball_x = local_x
-            self.ball_y = local_y
-            percent_x = local_x / float(self.width) if self.width else 0
-            percent_y = local_y / float(self.height) if self.height else 0
-            print(f"Ball pos_hint: ({percent_x:.4f}, {percent_y:.4f})")
-            self.ball_placed = True
+        self.ball_x = local_x
+        self.ball_y = local_y
+        percent_x = local_x / float(self.width) if self.width else 0
+        percent_y = local_y / float(self.height) if self.height else 0
+        print(f"Ball pos_hint: ({percent_x:.4f}, {percent_y:.4f})")
+        self.ball_placed = True
+
     def distance_to_reading(self, dist, max_dist):
         norm = 0.0 if (max_dist is None or max_dist <= 0) else min(1.0, dist / max_dist)
         cont = MIN_READING + norm * (MAX_READING - MIN_READING)
