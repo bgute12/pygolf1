@@ -69,7 +69,7 @@ class GolfGreen(Widget):
             if self.ball_placed:
                 Color(1, 1, 1, 1)
                 # ball is drawn centered at ball_x/ball_y with size 20x20 (same as before)
-                Ellipse(pos=(self.x + self.ball_x - 10, self.y + self.ball_y - 10), size=(20, 20))
+                Ellipse(pos=(self.x + self.ball_x - 10, self.y + self.ball_y - 10), size=(10, 10))
 
     # helper to compute total score for display
     def get_player_score(self, name):
@@ -178,6 +178,7 @@ class GolfGreen(Widget):
         if self.ball_placed:
             print("Ball already placed this round; ignore additional touches.")
             return True
+        
 
         # schedule placement (short delay helps Pi touch timing)
         local_x = touch.x - self.x
