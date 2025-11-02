@@ -59,32 +59,41 @@
         size_hint_x: 0.25
         spacing: 10
         padding: 10
-
         canvas.before:
             Color:
                 rgba: 0.2, 0.2, 0.2, 1
             Rectangle:
                 pos: self.pos
                 size: self.size
-
-        Label:
-            text: "Mode"
+        BoxLayout:
             size_hint_y: None
-            height: 28
+            height: 40
+            spacing: 6
+            opacity: 1 if (golf.mode_selected and golf.mode == "Normal") else 0
+            Label:
+                text: "Current Player: " + (golf.current_player if golf.current_player else "None")
+                size_hint_y: None
+                height: 28
+
+            
 
         BoxLayout:
             size_hint_y: None
             height: 40
             spacing: 6
+            opacity: 0 if (golf.mode_selected and golf.mode == "Normal") else 1
+            disabled: (golf.mode_selected and golf.mode == "Normal")
+
+        BoxLayout:
+            size_hint_y: None
+            height: 40
+            spacing: 6
+            opacity: 0 if (golf.mode_selected and golf.mode == "Normal") else 1
+            disabled: (golf.mode_selected and golf.mode == "Normal")
             Button:
-                text: "Normal Mode"
+                text: "Normal"
                 on_release:
                     golf.mode = "Normal"
-                    golf.mode_selected = True
-            Button:
-                text: "Practice Mode"
-                on_release:
-                    golf.mode = "Practice"
                     golf.mode_selected = True
 
         # Normal mode controls (appear only after selecting Normal)
@@ -131,22 +140,10 @@
                 on_release: golf.start_game()
 
             Button:
-                text: "Replace Ball"
-                size_hint_y: None
-                height: 40
-                disabled: not (golf.game_started and not golf.ball_placed)
-                on_release: golf.replace_ball()
-
-            Button:
                 text: "Next Player"
                 size_hint_y: None
                 height: 40
                 on_release: golf.next_player()
-
-            Label:
-                text: "Current Player: " + (golf.current_player if golf.current_player else "None")
-                size_hint_y: None
-                height: 28
 
             Label:
                 text: "Round: " + str(golf.current_round)
