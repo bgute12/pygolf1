@@ -16,93 +16,45 @@
             id: golf
             size: self.size
             pos: self.pos
-            canvas:
-                Color:
-                    rgba: 0, 0, 0, 0
-                Rectangle:
-                    pos: self.pos
-                    size: self.size
 
-        # Holes and labels
-        Widget:
-            canvas:
-                Color:
-                    rgba: 1, 1, 1, 1
-                Ellipse:
-                    pos: (golf.get_scaled_hole_pos(golf.holes[0])[0] - golf.holes[0]['radius'], golf.get_scaled_hole_pos(golf.holes[0])[1] - golf.holes[0]['radius'])
-                    size: (golf.holes[0]['radius'] * 2, golf.holes[0]['radius'] * 2)
+        # Hole labels and small white markers placed by accessing golf.get_scaled_hole_pos
         Label:
             text: "H1: " + (str(golf.holes[0].get('last_points')) if golf.holes[0].get('last_points') is not None else "-")
             size_hint: None, None
-            size: 100, 32
-            font_size: 20
-            pos: (golf.get_scaled_hole_pos(golf.holes[0])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[0])[1] + golf.holes[0]['radius'])
+            size: 100, 24
+            font_size: 16
+            pos: (golf.get_scaled_hole_pos(golf.holes[0])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[0])[1] + 12)
 
-        Widget:
-            canvas:
-                Color:
-                    rgba: 1, 1, 1, 1
-                Ellipse:
-                    pos: (golf.get_scaled_hole_pos(golf.holes[1])[0] - golf.holes[1]['radius'], golf.get_scaled_hole_pos(golf.holes[1])[1] - golf.holes[1]['radius'])
-                    size: (golf.holes[1]['radius'] * 2, golf.holes[1]['radius'] * 2)
         Label:
             text: "H2: " + (str(golf.holes[1].get('last_points')) if golf.holes[1].get('last_points') is not None else "-")
             size_hint: None, None
-            size: 100, 32
-            font_size: 20
-            pos: (golf.get_scaled_hole_pos(golf.holes[1])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[1])[1] + golf.holes[1]['radius'])
+            size: 100, 24
+            font_size: 16
+            pos: (golf.get_scaled_hole_pos(golf.holes[1])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[1])[1] + 12)
 
-        Widget:
-            canvas:
-                Color:
-                    rgba: 1, 1, 1, 1
-                Ellipse:
-                    pos: (golf.get_scaled_hole_pos(golf.holes[2])[0] - golf.holes[2]['radius'], golf.get_scaled_hole_pos(golf.holes[2])[1] - golf.holes[2]['radius'])
-                    size: (golf.holes[2]['radius'] * 2, golf.holes[2]['radius'] * 2)
         Label:
             text: "H3: " + (str(golf.holes[2].get('last_points')) if golf.holes[2].get('last_points') is not None else "-")
             size_hint: None, None
-            size: 100, 32
-            font_size: 20
-            pos: (golf.get_scaled_hole_pos(golf.holes[2])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[2])[1] + golf.holes[2]['radius'])
+            size: 100, 24
+            font_size: 16
+            pos: (golf.get_scaled_hole_pos(golf.holes[2])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[2])[1] + 12)
 
-        Widget:
-            canvas:
-                Color:
-                    rgba: 1, 1, 1, 1
-                Ellipse:
-                    pos: (golf.get_scaled_hole_pos(golf.holes[3])[0] - golf.holes[3]['radius'], golf.get_scaled_hole_pos(golf.holes[3])[1] - golf.holes[3]['radius'])
-                    size: (golf.holes[3]['radius'] * 2, golf.holes[3]['radius'] * 2)
         Label:
             text: "H4: " + (str(golf.holes[3].get('last_points')) if golf.holes[3].get('last_points') is not None else "-")
             size_hint: None, None
-            size: 100, 32
-            font_size: 20
-            pos: (golf.get_scaled_hole_pos(golf.holes[3])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[3])[1] + golf.holes[3]['radius'])
+            size: 100, 24
+            font_size: 16
+            pos: (golf.get_scaled_hole_pos(golf.holes[3])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[3])[1] + 12)
 
-        Widget:
-            canvas:
-                Color:
-                    rgba: 1, 1, 1, 1
-                Ellipse:
-                    pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - golf.holes[4]['radius'], golf.get_scaled_hole_pos(golf.holes[4])[1] - golf.holes[4]['radius'])
-                    size: (golf.holes[4]['radius'] * 2, golf.holes[4]['radius'] * 2)
         Label:
             text: "H5: " + (str(golf.holes[4].get('last_points')) if golf.holes[4].get('last_points') is not None else "-")
             size_hint: None, None
-            size: 100, 32
-            font_size: 20
-            pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - self.width / 2, golf.get_scaled_hole_pos(golf.holes[4])[1] + golf.holes[4]['radius'])
-
-        Widget:
-            canvas:
-                Color:
-                    rgba: 1, 1, 1, 1
-                Ellipse:
-                    pos: (golf.x + golf.ball_x - 10, golf.y + golf.ball_y - 10)
-                    size: (10, 10)
+            size: 100, 24
+            font_size: 16
+            pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[4])[1] + 12)
 
     BoxLayout:
+        id: side_panel
         orientation: "vertical"
         size_hint_x: 0.25
         spacing: 10
@@ -116,47 +68,116 @@
                 size: self.size
 
         Label:
-            text: "Select Number of Players"
+            text: "Mode"
             size_hint_y: None
-            height: 30
+            height: 28
 
         BoxLayout:
             size_hint_y: None
             height: 40
-            spacing: 5
+            spacing: 6
+            Button:
+                text: "Normal Mode"
+                on_release:
+                    golf.mode = "Normal"
+                    golf.mode_selected = True
+            Button:
+                text: "Practice Mode"
+                on_release:
+                    golf.mode = "Practice"
+                    golf.mode_selected = True
+
+        # Normal mode controls (appear only after selecting Normal)
+        BoxLayout:
+            orientation: "vertical"
+            spacing: 8
+            size_hint_y: None
+            height: self.minimum_height
+            opacity: 1 if (golf.mode_selected and golf.mode == "Normal") else 0
+            disabled: not (golf.mode_selected and golf.mode == "Normal")
+
+            Label:
+                text: "Players:"
+                size_hint_y: None
+                height: 24
+
+            Label:
+                id: players_label
+                text: '\n'.join(["{}: {}".format(p, golf.get_player_score(p)) for p in golf.players]) if golf.players else "No players"
+                text_size: self.width, None
+                halign: "left"
+                valign: "top"
+                size_hint_y: None
+                height: self.texture_size[1] or 60
+
+            BoxLayout:
+                size_hint_y: None
+                height: 40
+                spacing: 5
+                Button:
+                    text: "1 Player"
+                    on_release: golf.register_players(1)
+                Button:
+                    text: "2 Players"
+                    on_release: golf.register_players(2)
+                Button:
+                    text: "3 Players"
+                    on_release: golf.register_players(3)
 
             Button:
-                text: "1 Player"
-                on_press: golf.register_players(1)
+                text: "Start Game"
+                size_hint_y: None
+                height: 40
+                on_release: golf.start_game()
 
             Button:
-                text: "2 Players"
-                on_press: golf.register_players(2)
+                text: "Replace Ball"
+                size_hint_y: None
+                height: 40
+                disabled: not (golf.game_started and not golf.ball_placed)
+                on_release: golf.replace_ball()
 
             Button:
-                text: "3 Players"
-                on_press: golf.register_players(3)
+                text: "Next Player"
+                size_hint_y: None
+                height: 40
+                on_release: golf.next_player()
 
-        Label:
-            text: "Players:\n" + "\n".join(golf.players)
-            text_size: self.width, None
-            halign: "left"
-            valign: "top"
-            size_hint_y: None
-            height: self.texture_size[1]
+            Label:
+                text: "Current Player: " + (golf.current_player if golf.current_player else "None")
+                size_hint_y: None
+                height: 28
 
-        Button:
-            text: "Next Player"
-            size_hint_y: None
-            height: 40
-            on_press: golf.next_player()
+            Label:
+                text: "Round: " + str(golf.current_round)
+                size_hint_y: None
+                height: 28
 
-        Label:
-            text: "Current Player: " + golf.current_player
+        # Practice mode controls (simple)
+        BoxLayout:
+            orientation: "vertical"
+            spacing: 8
             size_hint_y: None
-            height: 30
+            height: self.minimum_height
+            opacity: 1 if (golf.mode_selected and golf.mode == "Practice") else 0
+            disabled: not (golf.mode_selected and golf.mode == "Practice")
 
-        Label:
-            text: "Round: " + str(golf.current_round)
-            size_hint_y: None
-            height: 30
+            Label:
+                text: "Practice Mode active"
+                size_hint_y: None
+                height: 28
+            Button:
+                text: "Replace Ball (Practice)"
+                size_hint_y: None
+                height: 40
+                on_release:
+                    golf.ball_placed = False
+                    golf.ball_x = -1000
+                    golf.ball_y = -1000
+                    golf.update_canvas()
+            Button:
+                text: "Clear Scores"
+                size_hint_y: None
+                height: 40
+                on_release:
+                    golf.clear_scores()

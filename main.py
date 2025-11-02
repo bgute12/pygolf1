@@ -2,10 +2,14 @@ import math
 import traceback
 from kivy.app import App
 from kivy.clock import Clock
-from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty
+from kivy.properties import (
+    ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
+)
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
+from kivy.graphics import Color, Ellipse
 
+# Keep same hole definitions/positions as your original
 HOLES = [
     {"id": 1, "pos_hint": (0.0913, 0.6378), "radius": 8, "last_points": None},
     {"id": 2, "pos_hint": (0.3620, 0.7678), "radius": 8, "last_points": None},
@@ -19,45 +23,6 @@ MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
-class Scoreboard(Widget):
-    readings = DictProperty({})
-    display_text = StringProperty("No readings yet")
-
-    def _update_display(self):
-        if not self.readings:
-            self.display_text = "No readings yet"
-            return
-        lines = [f"H{int(hid)}: {int(pts)}" for hid, pts in sorted(self.readings.items())]
-        self.display_text = "\n".join(lines)
-
-    def on_readings(self, instance, value):
-        self._update_display()
-
-    def set_reading(self, hole, points):
-        self.readings[hole] = points
-        self._update_display()
-
-    def clear(self):
-        self.readings = {}
-        self._update_display()
-
-def get_or_create_scoreboard():
-    app = App.get_running_app()
-    if not app or not getattr(app, "root", None):
-        return None
-    root = app.root
-    sb = root.ids.get("scoreboard_widget")
-    if sb:
-        return sb
-    sb = Scoreboard()
-    sb.size_hint_x = None
-    sb.width = 0
-    try:
-        root.add_widget(sb)
-    except Exception:
-        pass
-    root.ids["scoreboard_widget"] = sb
-    return sb
 
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -67,43 +32,121 @@ class GolfGreen(Widget):
     player_scores = DictProperty({})
     live_text = StringProperty("")
     live_points_by_hole = DictProperty({})
-    ball_x = NumericProperty(-1000)
+    ball_x = NumericProperty(-1000)   # coordinates are local to widget (not absolute)
     ball_y = NumericProperty(-1000)
-    holes = ListProperty(HOLES)
-    ball_placed = False
+    holes = ListProperty(HOLES.copy())
+    ball_placed = BooleanProperty(False)
+    mode = StringProperty("")          # "Normal" or "Practice"
+    mode_selected = BooleanProperty(False)
+    game_started = BooleanProperty(False)
 
-    def add_player_name(self, name):
-        name = name.strip()
-        if name and name not in self.players and len(self.players) < MAX_PLAYERS:
-            self.players.append(name)
-            self.player_scores[name] = []
-            print(f"Added player: {name}")
+    # startup safety for touchscreen ghost touches
+    _accept_touches = False
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # redraw when size/pos change
+        self.bind(size=self.update_canvas, pos=self.update_canvas)
+        # enable touches after short delay to avoid ghost touch on Pi
+        Clock.schedule_once(self._enable_touches, 0.5)
+        # initial draw
+        Clock.schedule_once(lambda dt: self.update_canvas(), 0)
+
+    def _enable_touches(self, dt):
+        self._accept_touches = True
+
+    def update_canvas(self, *args):
+        """Draw holes and ball on canvas.after so they appear above background."""
+        self.canvas.after.clear()
+        with self.canvas.after:
+            # draw holes as white circles (same radius as before)
+            for hole in self.holes:
+                hx, hy = self.get_scaled_hole_pos(hole)
+                Color(1, 1, 1, 1)
+                Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]),
+                        size=(hole["radius"] * 2, hole["radius"] * 2))
+            # draw ball as white (as requested). stays until next_player()
+            if self.ball_placed:
+                Color(1, 1, 1, 1)
+                # ball is drawn centered at ball_x/ball_y with size 20x20 (same as before)
+                Ellipse(pos=(self.x + self.ball_x - 10, self.y + self.ball_y - 10), size=(20, 20))
+
+    # helper to compute total score for display
+    def get_player_score(self, name):
+        scores = self.player_scores.get(name, [])
+        return sum(scores) if scores else 0
+
+    # register players 1-3, reset score lists
     def register_players(self, count=1):
         count = max(1, min(count, MAX_PLAYERS))
         self.players = [f"Player {i+1}" for i in range(count)]
-        self.player_scores = {name: [] for name in self.players}
+        self.player_scores = {p: [] for p in self.players}
         self.current_player_index = 0
         self.current_round = 1
         self.current_player = self.players[0] if self.players else ""
-        print(f"Starting game with players: {self.players}")
+        self.ball_placed = False
+        self.game_started = False
+        self.update_canvas()
+        print("Registered players:", self.players)
 
-    def get_current_player(self):
-        return self.players[self.current_player_index] if self.players else None
+    def start_game(self):
+        if not self.players:
+            print("No players, cannot start")
+            return
+        self.game_started = True
+        self.ball_placed = False
+        self.current_player_index = 0
+        self.current_player = self.players[self.current_player_index]
+        self.update_canvas()
+        print("Game started. Current player:", self.current_player)
+
+    def replace_ball(self):
+        """
+        Only allowed for the first player of each round:
+        - game_started must be True
+        - current_player_index must be 0 (first player of the round)
+        This method clears any stored coords so player can tap to place the ball again.
+        """
+        if not self.game_started:
+            print("Replace Ball blocked: game not started")
+            return
+        if self.current_player_index != 0:
+            print("Replace Ball blocked: not first player of the round")
+            return
+
+        # clear last visual coords so player can place new ball
+        self.ball_x = -1000
+        self.ball_y = -1000
+        self.ball_placed = False  # allow re-placement
+        self.update_canvas()
+        print("Replace Ball: ready for re-placement")
 
     def next_player(self):
         if not self.players:
             return
+
         self.current_player_index += 1
+
+        # Check if we need to advance to the next round
         if self.current_player_index >= len(self.players):
             self.current_player_index = 0
             self.current_round += 1
             if self.current_round > MAX_ROUNDS:
-                print("Game over!")
-                return
+                print("Reached max rounds")
+                return  # Optionally end the game here
+
+            # Clear ball only at the start of a new round
+            self.ball_placed = False
+            self.ball_x = -1000
+            self.ball_y = -1000
+
         self.current_player = self.players[self.current_player_index]
-        print(f"Next turn: {self.current_player} (Round {self.current_round})")
-        self.ball_placed = False
+        self.update_canvas()
+        print(f"Next player: {self.current_player} (Round {self.current_round})")
+
+    def clear_scores(self):
+        self.player_scores = {p: [] for p in self.players}
+        self.update_canvas()
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -112,73 +155,77 @@ class GolfGreen(Widget):
         return px, py
 
     def on_touch_down(self, touch):
-        try:
-            # Ignore if the touch is on a child widget (like a button)
-            if any(child.collide_point(*touch.pos) for child in self.children):
-                return False
-
-            if not self.collide_point(*touch.pos):
-                return False
-
-            local_x = touch.x - self.x
-            local_y = touch.y - self.y
-
-            self._touch_x = local_x
-            self._touch_y = local_y
-
-            Clock.schedule_once(self._place_ball, 0.05)
+        # block early ghost touches
+        if not self._accept_touches:
+            print("Ignoring early touch (startup)")
             return True
-        except Exception:
-            print("Unhandled exception in on_touch_down:")
-            traceback.print_exc()
+
+        # only allow placement in Normal mode after game started
+        if not (self.mode_selected and self.mode == "Normal" and self.game_started):
+            return False
+
+        # prevent touches on side panel from placing the ball
+        root = App.get_running_app().root
+        side = root.ids.get("side_panel", None)
+        if side and side.collide_point(*touch.pos):
+            return False
+
+        # ignore touches outside the green
+        if not self.collide_point(*touch.pos):
+            return False
+
+        # if ball already placed for this round, do not allow another placement
+        if self.ball_placed:
+            print("Ball already placed this round; ignore additional touches.")
             return True
+
+        # schedule placement (short delay helps Pi touch timing)
+        local_x = touch.x - self.x
+        local_y = touch.y - self.y
+        self._touch_x = local_x
+        self._touch_y = local_y
+        Clock.schedule_once(self._place_ball, 0.05)
+        return True
 
     def _place_ball(self, dt):
+        # avoid placing twice
         if self.ball_placed:
             return
 
-        local_x = self._touch_x
-        local_y = self._touch_y
+        local_x = getattr(self, "_touch_x", None)
+        local_y = getattr(self, "_touch_y", None)
+        if local_x is None or local_y is None:
+            return
 
+        # compute points relative to holes and update last_points
         max_dist = math.hypot(max(1, self.width), max(1, self.height))
-        sb = get_or_create_scoreboard()
         results = []
-
         for i, hole in enumerate(self.holes):
             hx, hy = self.get_scaled_hole_pos(hole)
             local_hx = hx - self.x
             local_hy = hy - self.y
             dist = math.hypot(local_hx - local_x, local_hy - local_y)
-            points = self.distance_to_reading(dist, max_dist)
+            pts = self.distance_to_reading(dist, max_dist)
+            new_h = hole.copy()
+            new_h["last_points"] = pts
+            self.holes[i] = new_h
+            results.append((new_h["id"], pts))
+            self.live_points_by_hole[new_h["id"]] = pts
 
-            new_hole = hole.copy()
-            new_hole["last_points"] = points
-            self.holes[i] = new_hole
-            self.holes = list(self.holes)
-
-            self.live_points_by_hole[new_hole["id"]] = points
-            results.append((new_hole["id"], points))
-            if sb:
-                sb.set_reading(new_hole["id"], points)
-
-        if results:
-            nearest = min(results, key=lambda t: t[1])
-            self.live_text = str(nearest[1])
-            hit = nearest[1] == 0
-            current_player = self.get_current_player()
+        # determine hit and update current player's score (old behavior: 0 -> hit -> MAX_READING or 0)
+        nearest = min(results, key=lambda t: t[1]) if results else None
+        hit = nearest and nearest[1] == 0
+        if self.current_player:
             score = MAX_READING if hit else 0
-            if current_player:
-                self.player_scores[current_player].append(score)
-                print(f"{current_player} scored {score} in round {self.current_round}")
-        else:
-            self.live_text = ""
+            self.player_scores.setdefault(self.current_player, []).append(score)
 
+        # set ball position (local coords) and lock it for the round
         self.ball_x = local_x
         self.ball_y = local_y
-        percent_x = local_x / float(self.width) if self.width else 0
-        percent_y = local_y / float(self.height) if self.height else 0
-        print(f"Ball pos_hint: ({percent_x:.4f}, {percent_y:.4f})")
         self.ball_placed = True
+        # redraw visuals
+        self.update_canvas()
+        print(f"Placed ball for {self.current_player} at ({local_x:.1f},{local_y:.1f}), nearest={nearest}")
 
     def distance_to_reading(self, dist, max_dist):
         norm = 0.0 if (max_dist is None or max_dist <= 0) else min(1.0, dist / max_dist)
@@ -186,12 +233,15 @@ class GolfGreen(Widget):
         pts = int(round(cont))
         return max(MIN_READING, min(MAX_READING, pts))
 
+
 class RootWidget(BoxLayout):
     pass
+
 
 class MiniGolfApp(App):
     def build(self):
         return RootWidget()
+
 
 if __name__ == "__main__":
     MiniGolfApp().run()
