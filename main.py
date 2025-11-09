@@ -1,3 +1,115 @@
+#!/usr/bin/env python3
+import threading
+import time
+import subprocess
+import serial
+import shutil
+from queue import Queue
+
+from kivy.app import App
+from kivy.clock import Clock
+from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
+from kivy.uix.widget import Widget
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.graphics import Color, Ellipse
+
+# -----------------------
+# Config
+# -----------------------
+HOLES = [
+    {"id": 1, "pos_hint": (0.0913, 0.6378), "radius": 8, "last_points": None},
+    {"id": 2, "pos_hint": (0.3620, 0.7678), "radius": 8, "last_points": None},
+    {"id": 3, "pos_hint": (0.1985, 0.2817), "radius": 8, "last_points": None},
+    {"id": 4, "pos_hint": (0.7452, 0.2276), "radius": 8, "last_points": None},
+    {"id": 5, "pos_hint": (0.9331, 0.3715), "radius": 8, "last_points": None},
+]
+
+MIN_READING = 0
+MAX_READING = 10
+
+HOLE_NAME_PREFIXES = {
+    1: "HOLE_1",
+    2: "HOLE_2",
+    3: "HOLE_3",
+    4: "HOLE_4",
+    5: "HOLE_5",
+}
+
+BT_RETRY_DELAY = 5  # seconds
+bt_event_queue = Queue()
+
+def run_cmd(cmd):
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        return result.stdout.strip()
+    except Exception as e:
+        print("⚠️", e)
+        return ""
+
+def bt_auto_thread(hole_id, name_prefix):
+    port = f"/dev/rfcomm{hole_id}"
+    while True:
+        try:
+            print(f"[BT] Scanning for {name_prefix}...")
+            run_cmd("bluetoothctl scan on &")
+            time.sleep(6)
+            devices = run_cmd("bluetoothctl devices")
+            run_cmd("bluetoothctl scan off")
+            addr = None
+            for line in devices.splitlines():
+                if name_prefix in line:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        addr = parts[1]
+                        break
+            if not addr:
+                print(f"[BT] {name_prefix} not found; retrying in {BT_RETRY_DELAY}s")
+                time.sleep(BT_RETRY_DELAY)
+                continue
+            print(f"[BT] Found {name_prefix} at {addr}")
+            run_cmd(f"bluetoothctl pair {addr}")
+            run_cmd(f"bluetoothctl trust {addr}")
+            run_cmd(f"bluetoothctl connect {addr}")
+            run_cmd(f"sudo rfcomm release {hole_id} || true")
+            run_cmd(f"sudo rfcomm bind {hole_id} {addr} 1")
+            print(f"[BT] Bound {addr} -> {port}")
+            ser = None
+            for _ in range(3):
+                try:
+                    ser = serial.Serial(port, 9600, timeout=1)
+                    print(f"[BT] Listening on {port}")
+                    break
+                except Exception:
+                    time.sleep(1)
+            if not ser:
+                print(f"[BT] Cannot open {port}, retrying...")
+                time.sleep(BT_RETRY_DELAY)
+                continue
+            while True:
+                data = ser.readline()
+                if not data:
+                    continue
+                msg = data.decode(errors="ignore").strip()
+                if msg:
+                    print(f"[BT][{name_prefix}] {msg}")
+                    parts = msg.split(":")
+                    if len(parts) >= 3 and parts[0] == "HOLE":
+                        try:
+                            hid = int(parts[1])
+                            if parts[2].startswith("1"):
+                                bt_event_queue.put(hid)
+                        except ValueError:
+                            pass
+        except Exception as e:
+            print(f"[BT] Exception ({name_prefix}):", e)
+        finally:
+            run_cmd(f"sudo rfcomm release {hole_id} || true")
+            time.sleep(BT_RETRY_DELAY)
+
+# -----------------------
+# GolfGreen (one placement per round)
+# -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
     current_player_index = NumericProperty(0)
@@ -13,7 +125,7 @@ class GolfGreen(Widget):
     MAX_SCORE_RADIUS = 200
     _pending_place_ev = None
 
-    # New: only one placement allowed per round
+    # Only one placement allowed per round
     placed_this_round = BooleanProperty(False)
 
     hole_points = DictProperty({})
@@ -95,20 +207,17 @@ class GolfGreen(Widget):
         return sum(scores) if scores else 0
 
     def _advance_round_after_single_placement(self):
-        # mark that this round had a placement and immediately advance to next round
-        self.placed_this_round = True
+        # Immediately advance round. Reset placement flag so next round allows one placement.
         self.current_round += 1
-        # reset placed flag for next round (so next round starts with no placement)
-        # but we want to set it false after increment so next round allows placement
         self.placed_this_round = False
-        # keep current_player_index at 0 for new round (optional: rotate which player starts)
+        # Reset current player index to 0 (optional)
         self.current_player_index = 0
         self.current_player = self.players[0] if self.players else ""
-        print(f"--- Advanced to round {self.current_round}; placement for that round is now empty ---")
+        print(f"--- Advanced to round {self.current_round} ---")
 
     def handle_hole_event(self, hole_id):
         if self.placed_this_round:
-            print("A placement has already occurred this round; ignore.")
+            print("A placement has already occurred this round; ignoring.")
             return
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
@@ -124,7 +233,6 @@ class GolfGreen(Widget):
             except Exception:
                 pass
             self._pending_place_ev = None
-        # schedule placement in 0.5 seconds
         self._pending_place_ev = Clock.schedule_once(lambda dt: self._do_place(hx, hy, hole_id), 0.5)
 
     def _do_place(self, hx, hy, hole_id=None):
@@ -133,7 +241,7 @@ class GolfGreen(Widget):
 
     def place_ball(self, hx, hy, hole_id=None):
         if self.placed_this_round:
-            print("Ignored placement; round already had a placement.")
+            print("Ignored placement; this round already had a placement.")
             return
 
         self.ball_x = hx - self.x
@@ -165,7 +273,7 @@ class GolfGreen(Widget):
             score = int(round(MAX_READING - frac * (MAX_READING - MIN_READING)))
             score = max(MIN_READING, min(MAX_READING, score))
 
-        # For single placement per round: attribute score to current player
+        # Attribute to current player
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(score)
             print(f"{self.current_player} scored {score} (dist={int(dist)} px) at hole {target_hole['id']}")
@@ -174,7 +282,7 @@ class GolfGreen(Widget):
         self.hole_points[target_hole["id"]] = score
         self._update_hole_labels()
 
-        # mark that a placement happened and immediately advance the round (as requested)
+        # mark placement happened and advance round shortly after
         self.placed_this_round = True
         Clock.schedule_once(lambda dt: self._advance_round_after_single_placement(), 0.1)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
@@ -205,3 +313,56 @@ class GolfGreen(Widget):
         tx, ty = touch.pos
         self._schedule_place(tx, ty)
         return True
+
+# -----------------------
+# Helpers and App
+# -----------------------
+def process_bt_queue(dt):
+    app = App.get_running_app()
+    while not bt_event_queue.empty():
+        hid = bt_event_queue.get_nowait()
+        Clock.schedule_once(lambda dt, hole=hid: app.green.handle_hole_event(hole), 0)
+
+def start_bt_threads():
+    for hid, prefix in HOLE_NAME_PREFIXES.items():
+        threading.Thread(target=bt_auto_thread, args=(hid, prefix), daemon=True).start()
+
+def open_bt_terminal():
+    cmd_shell = "bluetoothctl"
+    terminals = [
+        ("x-terminal-emulator", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+        ("gnome-terminal", ["--", "bash", "-c", f"{cmd_shell}; exec bash"]),
+        ("konsole", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+        ("xfce4-terminal", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+        ("lxterminal", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+        ("alacritty", ["-e", "bash", "-c", f"{cmd_shell}; exec bash"]),
+        ("xterm", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+    ]
+    for term, args in terminals:
+        path = shutil.which(term)
+        if path:
+            try:
+                subprocess.Popen([path] + args)
+                print(f"[BT] Opened bluetoothctl in {term}")
+                return True
+            except Exception as e:
+                print(f"[BT] Failed to launch {term}: {e}")
+    print("[BT] Could not find a terminal emulator. Run bluetoothctl manually.")
+    return False
+
+class RootWidget(BoxLayout):
+    pass
+
+class MiniGolfApp(App):
+    def build(self):
+        return RootWidget()
+
+    def on_start(self):
+        self.green = self.root.ids.golf
+        self.green.register_players(2)
+        Clock.schedule_interval(process_bt_queue, 0.1)
+        start_bt_threads()
+        # optional: open_bt_terminal()
+
+if __name__ == "__main__":
+    MiniGolfApp().run()
