@@ -237,13 +237,16 @@ def start_bt_threads():
 class MiniGolfApp(App):
     def build(self):
         Builder.load_file("minigolf.kv")
-        root = RootWidget()  # instantiate once
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
-        return root
+        # Do NOT return RootWidget manually
+        return self.root  # Kivy will auto-create RootWidget from KV
+
     def on_start(self):
-        # Register default 2 players
+        # Assign green
+        self.green = self.root.ids.golf
         self.green.register_players(2)
+
 
 # -----------------------
 if __name__ == "__main__":
