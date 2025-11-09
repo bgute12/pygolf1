@@ -236,8 +236,8 @@ def start_bt_threads():
 # -----------------------
 class MiniGolfApp(App):
     def build(self):
-        Builder.load_file("minigolf.kv")
-        return RootWidget()  # make sure this exists and is the top widget
+        return RootWidget()
+
 
 
     def on_start(self):
