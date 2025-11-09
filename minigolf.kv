@@ -74,7 +74,7 @@
 
         Label:
             id: players_label
-            text: '\n'.join(["{}: {}".format(p, golf.get_player_score(p)) for p in golf.players]) if golf.players else "No players"
+            text: '\\n'.join(["{}: {}".format(p, golf.get_player_score(p)) for p in golf.players]) if golf.players else "No players"
             text_size: self.width, None
             halign: "left"
             valign: "top"
@@ -102,11 +102,19 @@
             on_release: golf.start_game()
 
         Button:
+            text: "Replace Ball"
+            size_hint_y: None
+            height: 40
+            # enabled only when game started and current player is first of round
+            disabled: not (golf.game_started and golf.current_player_index == 0)
+            on_release: golf.replace_ball()
+
+        Button:
             text: "Next Player"
             size_hint_y: None
             height: 40
             on_release:
-                app.root.ids.golf.next_player() if app.root and app.root.ids and app.root.ids.golf.players else None
+                root.ids.golf.next_player() if root and root.ids and root.ids.golf else None
 
         Label:
             text: "Round: " + str(golf.current_round)
