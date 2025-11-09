@@ -6,7 +6,6 @@
     FloatLayout:
         size_hint_x: 0.75
 
-        # Background Image
         Image:
             source: "background.png"
             allow_stretch: True
@@ -14,47 +13,46 @@
             size_hint: 1, 1
             pos_hint: {'x':0, 'y':0}
 
-        # GolfGreen overlay
         GolfGreen:
             id: golf
             size_hint: 1, 1
             pos_hint: {'x':0, 'y':0}
 
-        # Hole Labels
+        # Hole Labels with ids so Python can update them safely
         Label:
-            text: "H1: " + (str(golf.holes[0].get('last_points')) if golf.holes[0].get('last_points') is not None else "-")
+            id: h1
+            text: "H1: -"
             size_hint: None, None
             size: 100, 24
             font_size: 16
-            pos: (golf.get_scaled_hole_pos(golf.holes[0])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[0])[1] + 12)
 
         Label:
-            text: "H2: " + (str(golf.holes[1].get('last_points')) if golf.holes[1].get('last_points') is not None else "-")
+            id: h2
+            text: "H2: -"
             size_hint: None, None
             size: 100, 24
             font_size: 16
-            pos: (golf.get_scaled_hole_pos(golf.holes[1])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[1])[1] + 12)
 
         Label:
-            text: "H3: " + (str(golf.holes[2].get('last_points')) if golf.holes[2].get('last_points') is not None else "-")
+            id: h3
+            text: "H3: -"
             size_hint: None, None
             size: 100, 24
             font_size: 16
-            pos: (golf.get_scaled_hole_pos(golf.holes[2])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[2])[1] + 12)
 
         Label:
-            text: "H4: " + (str(golf.holes[3].get('last_points')) if golf.holes[3].get('last_points') is not None else "-")
+            id: h4
+            text: "H4: -"
             size_hint: None, None
             size: 100, 24
             font_size: 16
-            pos: (golf.get_scaled_hole_pos(golf.holes[3])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[3])[1] + 12)
 
         Label:
-            text: "H5: " + (str(golf.holes[4].get('last_points')) if golf.holes[4].get('last_points') is not None else "-")
+            id: h5
+            text: "H5: -"
             size_hint: None, None
             size: 100, 24
             font_size: 16
-            pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[4])[1] + 12)
 
     BoxLayout:
         id: side_panel
@@ -107,7 +105,9 @@
             text: "Next Player"
             size_hint_y: None
             height: 40
-            on_release: golf.next_player()
+            on_release:
+                # safe next_player: check players exist before calling
+                app.root.ids.golf.next_player() if app.root and app.root.ids and app.root.ids.golf.players else None
 
         Label:
             text: "Round: " + str(golf.current_round)

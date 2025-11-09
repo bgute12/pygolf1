@@ -108,7 +108,7 @@ def bt_auto_thread(hole_id, name_prefix):
             time.sleep(BT_RETRY_DELAY)
 
 # -----------------------
-# GolfGreen (one placement per round)
+# GolfGreen (updates existing KV labels safely)
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -124,12 +124,7 @@ class GolfGreen(Widget):
 
     MAX_SCORE_RADIUS = 200
     _pending_place_ev = None
-
-    # Only one placement allowed per round
     placed_this_round = BooleanProperty(False)
-
-    hole_points = DictProperty({})
-    hole_labels = {}
 
     BALL_DISPLAY_SIZE = 6
     HOLE_COLOR = (1, 1, 1, 1)
@@ -137,41 +132,16 @@ class GolfGreen(Widget):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        Clock.schedule_once(lambda dt: self._create_hole_labels(), 0)
-        self.bind(size=self._update_everything, pos=self._update_everything,
-                  ball_placed=self._update_everything, ball_x=self._update_everything, ball_y=self._update_everything)
-        Clock.schedule_once(lambda dt: self.update_canvas(), 0)
+        # update positions and labels when needed
+        self.bind(size=self._on_layout_change, pos=self._on_layout_change,
+                  ball_placed=self._on_layout_change, ball_x=self._on_layout_change,
+                  ball_y=self._on_layout_change, current_round=lambda *a: self._on_layout_change())
+        Clock.schedule_once(lambda dt: self._on_layout_change(), 0)
 
-    def _create_hole_labels(self):
-        for lbl in self.hole_labels.values():
-            try:
-                self.remove_widget(lbl)
-            except Exception:
-                pass
-        self.hole_labels = {}
-        for hole in self.holes:
-            lid = hole["id"]
-            lbl = Label(text="", font_size="12sp", size_hint=(None, None))
-            self.hole_labels[lid] = lbl
-            self.add_widget(lbl)
-        self._update_hole_labels()
-
-    def _update_hole_labels(self):
-        for hole in self.holes:
-            hid = hole["id"]
-            hx, hy = self.get_scaled_hole_pos(hole)
-            lbl = self.hole_labels.get(hid)
-            if not lbl:
-                continue
-            pts = self.hole_points.get(hid)
-            lbl.text = f"{pts}" if pts is not None else ""
-            w = 40; h = 18
-            lbl.size = (w, h)
-            lbl.pos = (hx - w / 2, hy + hole.get("radius", 8) + 6)
-
-    def _update_everything(self, *args):
+    def _on_layout_change(self, *args):
+        # redraw canvas and update the five labels that exist in the FloatLayout
         self.update_canvas()
-        self._update_hole_labels()
+        self._update_kv_hole_labels()
 
     def update_canvas(self, *args):
         self.canvas.after.clear()
@@ -186,6 +156,36 @@ class GolfGreen(Widget):
                 size = self.BALL_DISPLAY_SIZE
                 Ellipse(pos=(self.x + self.ball_x - size / 2, self.y + self.ball_y - size / 2), size=(size, size))
 
+    def _safe_get_label(self, lid):
+        # labels live in the same FloatLayout parent; they are named h1..h5 in KV
+        try:
+            parent = self.parent
+            if not parent:
+                return None
+            # parent is FloatLayout, its ids are in parent.ids
+            return parent.ids.get(lid)
+        except Exception:
+            return None
+
+    def _update_kv_hole_labels(self):
+        # For each hole, update the corresponding KV Label's pos and text if it exists
+        for idx, hole in enumerate(self.holes, start=1):
+            lid = f"h{idx}"
+            lbl = self._safe_get_label(lid)
+            if not lbl:
+                continue
+            hx, hy = self.get_scaled_hole_pos(hole)
+            pts = hole.get("last_points")
+            lbl.text = f"H{idx}: {pts}" if pts is not None else f"H{idx}: -"
+            # center label above hole
+            w = lbl.width or 100
+            h = lbl.height or 24
+            # ensure label has size (some platforms need texture update)
+            if w == 0:
+                lbl.size = (100, 24)
+                w, h = lbl.size
+            lbl.pos = (hx - w / 2, hy + hole.get("radius", 8) + 6)
+
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
         px = self.x + phx * self.width
@@ -197,23 +197,38 @@ class GolfGreen(Widget):
         self.player_scores = {p: [] for p in self.players}
         self.current_player_index = 0
         self.current_round = 1
-        self.current_player = self.players[0]
-        self.game_started = True
+        self.current_player = self.players[0] if self.players else ""
         self.placed_this_round = False
         print("Players registered:", self.players)
+        # update side panel players_label via parent ids safely
+        try:
+            side_players = self.parent.ids.get("players_label") if self.parent else None
+            if side_players:
+                side_players.text = '\n'.join(["{}: {}".format(p, self.get_player_score(p)) for p in self.players])
+        except Exception:
+            pass
 
     def get_player_score(self, player):
         scores = self.player_scores.get(player, [])
         return sum(scores) if scores else 0
 
     def _advance_round_after_single_placement(self):
-        # Immediately advance round. Reset placement flag so next round allows one placement.
+        # Advance round as requested; ensure placed flag resets for next round
+        self.placed_this_round = True
         self.current_round += 1
+        # reset placed flag so next round allows a placement
         self.placed_this_round = False
-        # Reset current player index to 0 (optional)
+        # reset current player to first (safe even if no players)
         self.current_player_index = 0
         self.current_player = self.players[0] if self.players else ""
         print(f"--- Advanced to round {self.current_round} ---")
+        # update side panel player scores text
+        try:
+            side_players = self.parent.ids.get("players_label") if self.parent else None
+            if side_players:
+                side_players.text = '\n'.join(["{}: {}".format(p, self.get_player_score(p)) for p in self.players]) if self.players else "No players"
+        except Exception:
+            pass
 
     def handle_hole_event(self, hole_id):
         if self.placed_this_round:
@@ -248,6 +263,7 @@ class GolfGreen(Widget):
         self.ball_y = hy - self.y
         self.ball_placed = True
 
+        # compute nearest hole and score
         nearest = None; nearest_d = None
         for hole in self.holes:
             phx, phy = self.get_scaled_hole_pos(hole)
@@ -273,27 +289,30 @@ class GolfGreen(Widget):
             score = int(round(MAX_READING - frac * (MAX_READING - MIN_READING)))
             score = max(MIN_READING, min(MAX_READING, score))
 
-        # Attribute to current player
+        # Attribute to current player safely
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(score)
             print(f"{self.current_player} scored {score} (dist={int(dist)} px) at hole {target_hole['id']}")
+        else:
+            print(f"No current player to credit; scored {score} at hole {target_hole['id']}")
 
-        # record last points for hole and update labels
-        self.hole_points[target_hole["id"]] = score
-        self._update_hole_labels()
+        # save last points on the hole and update KV labels
+        target_hole["last_points"] = score
+        self._update_kv_hole_labels()
 
-        # mark placement happened and advance round shortly after
+        # mark placement happened and advance round
         self.placed_this_round = True
         Clock.schedule_once(lambda dt: self._advance_round_after_single_placement(), 0.1)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def clear_scores(self):
         self.player_scores = {p: [] for p in self.players}
-        self.hole_points = {}
+        for hole in self.holes:
+            hole["last_points"] = None
         self.ball_placed = False
         self.ball_x, self.ball_y = -1000, -1000
         self.placed_this_round = False
-        self._update_hole_labels()
+        self._update_kv_hole_labels()
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def start_game(self):
@@ -302,7 +321,10 @@ class GolfGreen(Widget):
         if self.players:
             self.current_player_index = 0
             self.current_player = self.players[0]
+        else:
+            self.current_player = ""
         self.placed_this_round = False
+        self._update_kv_hole_labels()
 
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
@@ -362,7 +384,6 @@ class MiniGolfApp(App):
         self.green.register_players(2)
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
-        # optional: open_bt_terminal()
 
 if __name__ == "__main__":
     MiniGolfApp().run()
