@@ -43,8 +43,7 @@ def run_cmd(cmd):
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         return result.stdout.strip()
-    except Exception as e:
-        print("⚠️", e)
+    except Exception:
         return ""
 
 def bt_auto_thread(hole_id, name_prefix):
@@ -101,7 +100,10 @@ def bt_auto_thread(hole_id, name_prefix):
             time.sleep(BT_RETRY_DELAY)
 
 # -----------------------
-# GolfGreen (fixed: includes next_player, ball persists, labels show hole score)
+# GolfGreen
+# - Only Player 1 can place each round
+# - Exactly one placement allowed per round
+# - Ball persists (does not disappear) until clear_scores()
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -118,16 +120,15 @@ class GolfGreen(Widget):
     MAX_SCORE_RADIUS = 200
     _pending_place_ev = None
 
-    # Only one placement allowed per round
+    # Only one placement allowed per round (global)
     placed_this_round = BooleanProperty(False)
 
-    BALL_DISPLAY_SIZE = 14   # larger ball
+    BALL_DISPLAY_SIZE = 14
     HOLE_COLOR = (1, 1, 1, 1)
     BALL_COLOR = (1, 1, 1, 1)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # update positions and labels when needed
         self.bind(size=self._on_layout_change, pos=self._on_layout_change,
                   ball_placed=self._on_layout_change, ball_x=self._on_layout_change,
                   ball_y=self._on_layout_change, current_round=lambda *a: self._on_layout_change())
@@ -174,15 +175,12 @@ class GolfGreen(Widget):
             hx, hy = self.get_scaled_hole_pos(hole)
             pts = hole.get("last_points")
             lbl.text = f"H{idx}: {pts}" if pts is not None else f"H{idx}: -"
-            # ensure reasonable size
             w = lbl.width or 100
             h = lbl.height or 24
             lbl.size = (w, h)
-            # offset above hole (radius + margin)
             offset_y = hole.get("radius", 10) + 12
             x = hx - w / 2
             y = hy + offset_y
-            # clamp to parent bounds
             x = max(0, min(x, parent_w - w))
             y = max(0, min(y, parent_h - h))
             lbl.pos = (x, y)
@@ -219,21 +217,18 @@ class GolfGreen(Widget):
         return sum(scores) if scores else 0
 
     def next_player(self):
-        # safe next_player: only if players exist
         if not self.players:
             print("No players to advance")
             return
         self.current_player_index = (self.current_player_index + 1) % len(self.players)
         self.current_player = self.players[self.current_player_index]
-        # Do NOT clear the ball position here — ball should stay where it landed
+        # DO NOT clear ball: ball persists across turns/rounds until clear_scores()
         print(f"Manually advanced to next player: {self.current_player}")
         self._update_side_players_label()
 
     def _advance_round_after_single_placement(self):
-        # Advance round when placement was NOT in hole
         self.current_round += 1
-        self.placed_this_round = False  # allow next round placement
-        # reset current player index to 0 (optional)
+        self.placed_this_round = False
         if self.players:
             self.current_player_index = 0
             self.current_player = self.players[0]
@@ -243,8 +238,13 @@ class GolfGreen(Widget):
         print(f"--- Advanced to round {self.current_round} ---")
 
     def handle_hole_event(self, hole_id):
+        # bluetooth events call this; apply same Player 1 restriction
         if self.placed_this_round:
             print("A placement has already occurred this round; ignoring.")
+            return
+        # Only Player 1 may place
+        if not self.players or self.current_player != self.players[0]:
+            print("Only Player 1 may place the ball this round.")
             return
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
@@ -267,8 +267,12 @@ class GolfGreen(Widget):
         self.place_ball(hx, hy, hole_id)
 
     def place_ball(self, hx, hy, hole_id=None):
+        # Only allow placement when Player 1 is current and no placement yet this round
         if self.placed_this_round:
             print("Ignored placement; this round already had a placement.")
+            return
+        if not self.players or self.current_player != self.players[0]:
+            print("Only Player 1 can place the ball. Current player:", self.current_player)
             return
 
         # place ball visually (absolute coords -> local coords)
@@ -305,7 +309,7 @@ class GolfGreen(Widget):
             score = max(MIN_READING, min(MAX_READING, score))
             made_hole = False
 
-        # credit current player if present
+        # credit Player 1 (current) safely
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(score)
             print(f"{self.current_player} scored {score} (dist={int(dist)} px) at hole {target_hole['id']}")
@@ -324,12 +328,12 @@ class GolfGreen(Widget):
         # - If ball made the hole: advance to next player (ball stays where it is)
         # - Otherwise: advance the round (single placement per round)
         if made_hole:
-            # advance to next player but keep ball where it is
             if self.players:
                 self.current_player_index = (self.current_player_index + 1) % len(self.players)
                 self.current_player = self.players[self.current_player_index]
             else:
                 self.current_player = ""
+            self._update_side_players_label()
             print(f"➡️ Next player: {self.current_player} (round {self.current_round})")
         else:
             Clock.schedule_once(lambda dt: self._advance_round_after_single_placement(), 0.3)
@@ -364,6 +368,10 @@ class GolfGreen(Widget):
             return super().on_touch_down(touch)
         if self.placed_this_round:
             print("A placement has already been made this round.")
+            return True
+        # Only allow Player 1 to place via touch as well
+        if not self.players or self.current_player != self.players[0]:
+            print("Only Player 1 can place the ball by touch. Current player:", self.current_player)
             return True
         tx, ty = touch.pos
         self._schedule_place(tx, ty)
