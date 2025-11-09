@@ -56,7 +56,6 @@
             font_size: 16
             pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[4])[1] + 12)
 
-    # Side Panel
     BoxLayout:
         id: side_panel
         orientation: "vertical"
@@ -70,13 +69,11 @@
                 pos: self.pos
                 size: self.size
 
-        # Current Player Info
         Label:
             text: "Current Player: " + (golf.current_player if golf.current_player else "None")
             size_hint_y: None
             height: 28
 
-        # Players Scores
         Label:
             id: players_label
             text: '\n'.join(["{}: {}".format(p, golf.get_player_score(p)) for p in golf.players]) if golf.players else "No players"
@@ -86,7 +83,6 @@
             size_hint_y: None
             height: self.texture_size[1] or 60
 
-        # Player buttons
         BoxLayout:
             size_hint_y: None
             height: 40
@@ -101,17 +97,18 @@
                 text: "3 Players"
                 on_release: golf.register_players(3)
 
-        # Game controls
         Button:
             text: "Start Game"
             size_hint_y: None
             height: 40
             on_release: golf.start_game()
+
         Button:
             text: "Next Player"
             size_hint_y: None
             height: 40
             on_release: golf.next_player()
+
         Label:
             text: "Round: " + str(golf.current_round)
             size_hint_y: None
