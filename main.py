@@ -212,10 +212,12 @@ class RootWidget(BoxLayout):
 # -----------------------
 class MiniGolfApp(App):
     def build(self):
+        # Root widget contains GolfGreen + side panel (if needed in KV)
         root = RootWidget()
         self.green = GolfGreen()
-        root.add_widget(self.green)
+        root.add_widget(self.green)  # Only GolfGreen; background is inside GolfGreen
         return root
+
 
     def on_start(self):
         self.green.register_players(2)
