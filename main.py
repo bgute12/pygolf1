@@ -11,8 +11,7 @@ from kivy.clock import Clock
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.image import Image
-from kivy.graphics import Color, Ellipse, Rectangle
+from kivy.graphics import Color, Ellipse
 
 # -----------------------
 # Config
@@ -30,6 +29,7 @@ MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
+# Device name prefixes for each hole’s ESP32/HC-05 module
 HOLE_NAME_PREFIXES = {
     1: "HOLE_1",
     2: "HOLE_2",
@@ -38,7 +38,7 @@ HOLE_NAME_PREFIXES = {
     5: "HOLE_5",
 }
 
-BT_RETRY_DELAY = 5
+BT_RETRY_DELAY = 5  # seconds
 bt_event_queue = Queue()
 
 # -----------------------
@@ -53,7 +53,7 @@ def run_cmd(cmd):
         return ""
 
 # -----------------------
-# Bluetooth Thread
+# Auto Bluetooth Thread (no PyBluez)
 # -----------------------
 def bt_auto_thread(hole_id, name_prefix):
     port = f"/dev/rfcomm{hole_id}"
@@ -121,7 +121,7 @@ def bt_auto_thread(hole_id, name_prefix):
             time.sleep(BT_RETRY_DELAY)
 
 # -----------------------
-# GolfGreen Widget
+# Kivy Game Classes
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -143,22 +143,16 @@ class GolfGreen(Widget):
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def update_canvas(self, *args):
-        self.canvas.before.clear()
-        with self.canvas.before:
-            # Background
-            Rectangle(source="background.png", pos=self.pos, size=self.size)
-
         self.canvas.after.clear()
         with self.canvas.after:
-            # Draw holes
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
                 Color(1, 1, 1, 1)
                 Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]), size=(hole["radius"]*2, hole["radius"]*2))
-            # Draw ball
             if self.ball_placed:
+                # smaller ball
                 Color(1, 1, 1, 1)
-                Ellipse(pos=(self.x + self.ball_x - 5, self.y + self.ball_y - 5), size=(10, 10))
+                Ellipse(pos=(self.x + self.ball_x - 3, self.y + self.ball_y - 3), size=(6, 6))
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -175,6 +169,11 @@ class GolfGreen(Widget):
         self.game_started = True
         print("Players registered:", self.players)
 
+    def get_player_score(self, player):
+        """Return total score for a player."""
+        scores = self.player_scores.get(player, [])
+        return sum(scores) if scores else 0
+
     def next_player(self):
         if not self.players: return
         self.current_player_index += 1
@@ -185,15 +184,16 @@ class GolfGreen(Widget):
         print(f"➡️ Next: {self.current_player} (Round {self.current_round})")
 
     def handle_hole_event(self, hole_id):
-        # Delay placement of ball by 1 second
-        Clock.schedule_once(lambda dt: self._place_ball(hole_id), 1)
-
-    def _place_ball(self, hole_id):
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
             print(f"Unknown hole {hole_id}")
             return
         hx, hy = self.get_scaled_hole_pos(hole)
+
+        # delay ball placement
+        Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.5)
+
+    def place_ball(self, hx, hy, hole_id):
         self.ball_x, self.ball_y, self.ball_placed = hx - self.x, hy - self.y, True
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
@@ -201,29 +201,17 @@ class GolfGreen(Widget):
         Clock.schedule_once(lambda dt: self.next_player(), 1)
         self.update_canvas()
 
-# -----------------------
-# RootWidget
-# -----------------------
-class RootWidget(BoxLayout):
-    pass
+class RootWidget(BoxLayout): pass
 
-# -----------------------
-# App
-# -----------------------
 class MiniGolfApp(App):
     def build(self):
-        # Load the KV-defined RootWidget
-        from kivy.lang import Builder
-        Builder.load_file("minigolf.kv")
-        root = RootWidget()
-        self.green = root.ids.golf  # access GolfGreen from KV
-        return root
+        self.green = GolfGreen()
+        return self.green
 
     def on_start(self):
         self.green.register_players(2)
         start_bt_threads()
         Clock.schedule_interval(process_bt_queue, 0.1)
-
 
 # -----------------------
 # Bluetooth integration
