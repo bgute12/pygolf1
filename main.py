@@ -244,7 +244,7 @@ class MiniGolfApp(App):
 
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
-        return root  # return the same instance
+
 
 
     def on_start(self):
