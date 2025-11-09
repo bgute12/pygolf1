@@ -28,7 +28,7 @@ HOLES = [
 ]
 
 MIN_READING = 0
-MAX_READING = 10
+MAX_READING = 10  # base max points for distance calculation
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
@@ -270,22 +270,38 @@ class GolfGreen(Widget):
         local_y = getattr(self, "_touch_y", None)
         if local_x is None or local_y is None:
             return
-        # compute points for each hole
-        max_dist = math.hypot(max(1, self.width), max(1, self.height))
+
+        max_diag = math.hypot(max(1, self.width), max(1, self.height))
         nearest_hole = None
-        for i, hole in enumerate(self.holes):
+        points_for_hole = 0
+
+        for hole in self.holes:
             hx, hy = self.get_scaled_hole_pos(hole)
             dist = math.hypot(hx - self.x - local_x, hy - self.y - local_y)
-            pts = 0 if dist <= hole["radius"] else MAX_READING
-            hole["last_points"] = pts
-            if pts == 0:
+
+            if dist <= hole["radius"]:
+                # Ball goes in the hole → max points
+                pts = MAX_READING
                 nearest_hole = hole
-        # update player's score if hit
-        if self.current_player and nearest_hole:
-            hid = nearest_hole["id"]
-            self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
-            print(f"🏆 {self.current_player} scored {MAX_READING} points for hole {hid}")
         # set ball visual
+            else:
+                # Farther away = more points
+                pts = int((dist / max_diag) * MAX_READING)
+            hole["last_points"] = pts
+
+            if pts > points_for_hole:
+                points_for_hole = pts
+                nearest_hole = hole if dist <= hole["radius"] else nearest_hole
+
+        # Update current player's score if ball goes in
+        if self.current_player and nearest_hole and math.hypot(
+                self.get_scaled_hole_pos(nearest_hole)[0] - self.x - local_x,
+                self.get_scaled_hole_pos(nearest_hole)[1] - self.y - local_y
+        ) <= nearest_hole["radius"]:
+            self.player_scores.setdefault(self.current_player, []).append(points_for_hole)
+            print(f"🏆 {self.current_player} scored {points_for_hole} points for hole {nearest_hole['id']}")
+
+        # Set ball visual
         self.ball_x = local_x
         self.ball_y = local_y
         self.ball_placed = True
@@ -319,7 +335,6 @@ class MiniGolfApp(App):
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
         return RootWidget()
-
 
 
 if __name__ == "__main__":
