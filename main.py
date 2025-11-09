@@ -7,7 +7,6 @@ import shutil
 from queue import Queue
 
 from kivy.app import App
-from kivy.lang import Builder
 from kivy.clock import Clock
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
 from kivy.uix.widget import Widget
@@ -120,7 +119,7 @@ def bt_auto_thread(hole_id, name_prefix):
             time.sleep(BT_RETRY_DELAY)
 
 # -----------------------
-# Kivy Game Classes
+# Kivy Game Classes (full, with touch placement + scoring)
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -135,6 +134,9 @@ class GolfGreen(Widget):
     mode = StringProperty("Normal")
     mode_selected = BooleanProperty(True)
     game_started = BooleanProperty(False)
+
+    # Scoring: within this many pixels from hole radius gives >0 score
+    MAX_SCORE_RADIUS = 200  # adjust for your display/DPI
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -195,13 +197,49 @@ class GolfGreen(Widget):
         hx, hy = self.get_scaled_hole_pos(hole)
         Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.25)
 
-    def place_ball(self, hx, hy, hole_id):
+    def place_ball(self, hx, hy, hole_id=None):
+        """
+        hx,hy are absolute coords (screen). If hole_id provided we prefer that hole as target.
+        """
         self.ball_x = hx - self.x
         self.ball_y = hy - self.y
         self.ball_placed = True
+
+        # Find nearest hole
+        nearest = None
+        nearest_d = None
+        for hole in self.holes:
+            phx, phy = self.get_scaled_hole_pos(hole)
+            d = ((phx - hx) ** 2 + (phy - hy) ** 2) ** 0.5
+            if nearest is None or d < nearest_d:
+                nearest = hole
+                nearest_d = d
+
+        if nearest is None:
+            print("No holes found; skipping scoring")
+            Clock.schedule_once(lambda dt: self.update_canvas(), 0)
+            return
+
+        # If hole_id provided, use that as target if it exists
+        target_hole = next((h for h in self.holes if h["id"] == hole_id), nearest)
+        thx, thy = self.get_scaled_hole_pos(target_hole)
+        dist = ((thx - hx) ** 2 + (thy - hy) ** 2) ** 0.5
+
+        # Scoring rules
+        radius = target_hole.get("radius", 8)
+        if dist <= radius:
+            score = MAX_READING
+        elif dist >= self.MAX_SCORE_RADIUS:
+            score = MIN_READING
+        else:
+            frac = (dist - radius) / max(1, (self.MAX_SCORE_RADIUS - radius))
+            score = int(round(MAX_READING - frac * (MAX_READING - MIN_READING)))
+            score = max(MIN_READING, min(MAX_READING, score))
+
         if self.current_player:
-            self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
-            print(f"{self.current_player} scored {MAX_READING} at hole {hole_id}")
+            self.player_scores.setdefault(self.current_player, []).append(score)
+            print(f"{self.current_player} scored {score} (dist={int(dist)} px) at hole {target_hole['id']}")
+
         Clock.schedule_once(lambda dt: self.next_player(), 1)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
@@ -217,6 +255,16 @@ class GolfGreen(Widget):
         if self.players:
             self.current_player_index = 0
             self.current_player = self.players[0]
+
+    def on_touch_down(self, touch):
+        # Only handle touches inside this widget
+        if not self.collide_point(*touch.pos):
+            return super().on_touch_down(touch)
+
+        tx, ty = touch.pos  # absolute coordinates
+        # Place the ball exactly where the user touched (scoring uses same coordinate system)
+        Clock.schedule_once(lambda dt: self.place_ball(tx, ty), 0)
+        return True
 
 class RootWidget(BoxLayout):
     pass
@@ -265,18 +313,19 @@ def open_bt_terminal():
 # -----------------------
 class MiniGolfApp(App):
     def build(self):
+        # Use automatic KV loading: return Python-created root (minigolf.kv must contain RULES, not an instance)
         return RootWidget()
 
     def on_start(self):
-        # Expect an id 'golf' in the KV
+        # Expect an id 'golf' in the KV under RootWidget
         self.green = self.root.ids.golf
         self.green.register_players(2)
 
-        # Start BT processing and threads
+        # Start BT queue processor and threads
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
 
-        # Optionally open bluetoothctl in a terminal
+        # Optional: open bluetoothctl terminal for manual pairing/debug
         open_bt_terminal()
 
 if __name__ == "__main__":
