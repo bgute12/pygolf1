@@ -236,12 +236,9 @@ def start_bt_threads():
 # -----------------------
 class MiniGolfApp(App):
     def build(self):
-        Builder.load_file("minigolf.kv")  # Load your KV file
-
-        # Create one RootWidget instance
-        root = RootWidget()
-        self.green = root.ids.golf  # access GolfGreen inside this instance
-
+        # Do NOT return RootWidget()
+        Builder.load_file("minigolf.kv")
+        # Access GolfGreen later via self.root.ids.golf
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
 
