@@ -308,23 +308,23 @@ class GolfGreen(Widget):
         self.ball_y = local_y
         self.ball_placed = True
         self.update_canvas()
-        def award_hole_points(self, hole_id):
-            # Find the hole that was triggered
-            hole = next((h for h in self.holes if h["id"] == hole_id), None)
-            if not hole:
-                print(f"⚠️ Hole {hole_id} not found")
-                return
+    def award_hole_points(self, hole_id):
+        # Find the hole that was triggered
+        hole = next((h for h in self.holes if h["id"] == hole_id), None)
+        if not hole:
+            print(f"⚠️ Hole {hole_id} not found")
+            return
 
-            # Use the hole’s last calculated points or default to 5
-            pts = hole.get("last_points", 5)
-            player = self.current_player
+        # Use the hole’s last calculated points or default to 5
+        pts = hole.get("last_points", 5)
+        player = self.current_player
 
-            if player:
-                self.player_scores.setdefault(player, []).append(pts)
-                print(f"🏁 Hole {hole_id} → {player} scored {pts} points!")
-                self.update_scores_display()
-            else:
-                print("⚠️ No active player to award points to")
+        if player:
+            self.player_scores.setdefault(player, []).append(pts)
+            print(f"🏁 Hole {hole_id} → {player} scored {pts} points!")
+            self.update_scores_display()
+        else:
+            print("⚠️ No active player to award points to")
 
 
 
