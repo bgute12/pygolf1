@@ -326,18 +326,16 @@ class GolfGreen(Widget):
     def award_hole_points(self, hole_id):
         current_time = now()
         if current_time - self.last_hole_time < self.hole_cooldown:
-            # Prevent double trigger
             print(f"⏳ Ignored duplicate trigger for hole {hole_id}")
             return
         self.last_hole_time = current_time
 
-        # Find hole data
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
             print(f"⚠️ Hole {hole_id} not found")
             return
 
-        # Use last points or default to 5
+        # Use dynamic points from the hole or fallback
         pts = hole.get("last_points")
         if pts is None:
             pts = int(MAX_READING / 2)
@@ -347,17 +345,15 @@ class GolfGreen(Widget):
             print("⚠️ No active player to award points to")
             return
 
-        # Award points safely only once per player
-        if not self.player_scores.get(player):
-            self.player_scores[player] = []
-
+        # Award points
+        self.player_scores.setdefault(player, []).append(pts)
         print(f"🏁 Hole {hole_id} → {player} scored {pts} points!")
 
-        self.player_scores[player].append(pts)
         self.update_scores_display()
 
-        # Move to next player
+        # Now safely move to the next player
         self.next_player()
+
 
 
 def process_bt_queue(dt):
@@ -369,17 +365,12 @@ def process_bt_queue(dt):
     if not golf_widget or not isinstance(golf_widget, GolfGreen):
         return
 
+    # Only process each Bluetooth event once
     while not bt_event_queue.empty():
         hid = bt_event_queue.get_nowait()
         print(f"[BT EVENT] Hole {hid} triggered")
         golf_widget.award_hole_points(hid)
 
-    while not bt_event_queue.empty():
-        hid = bt_event_queue.get_nowait()
-        print(f"[BT EVENT] Hole {hid} triggered")
-
-        if golf_widget and isinstance(golf_widget, GolfGreen):
-            golf_widget.award_hole_points(hid)
 
 
 
