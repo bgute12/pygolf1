@@ -5,12 +5,22 @@
 
     FloatLayout:
         size_hint_x: 0.75
+
+        # Background Image
+        Image:
+            source: "background.png"
+            allow_stretch: True
+            keep_ratio: True
+            size_hint: 1, 1
+            pos: self.pos
+
+        # Golf Green overlay
         GolfGreen:
             id: golf
             size: self.size
             pos: self.pos
 
-        # Hole labels and small white markers placed by accessing golf.get_scaled_hole_pos
+        # Hole Labels
         Label:
             text: "H1: " + (str(golf.holes[0].get('last_points')) if golf.holes[0].get('last_points') is not None else "-")
             size_hint: None, None
@@ -46,6 +56,7 @@
             font_size: 16
             pos: (golf.get_scaled_hole_pos(golf.holes[4])[0] - self.width/2, golf.get_scaled_hole_pos(golf.holes[4])[1] + 12)
 
+    # Side Panel
     BoxLayout:
         id: side_panel
         orientation: "vertical"
@@ -58,6 +69,8 @@
             Rectangle:
                 pos: self.pos
                 size: self.size
+
+        # Current Player Info
         BoxLayout:
             size_hint_y: None
             height: 40
@@ -68,28 +81,7 @@
                 size_hint_y: None
                 height: 28
 
-            
-
-        BoxLayout:
-            size_hint_y: None
-            height: 40
-            spacing: 6
-            opacity: 0 if (golf.mode_selected and golf.mode == "Normal") else 1
-            disabled: (golf.mode_selected and golf.mode == "Normal")
-
-        BoxLayout:
-            size_hint_y: None
-            height: 40
-            spacing: 6
-            opacity: 0 if (golf.mode_selected and golf.mode == "Normal") else 1
-            disabled: (golf.mode_selected and golf.mode == "Normal")
-            Button:
-                text: "Normal"
-                on_release:
-                    golf.mode = "Normal"
-                    golf.mode_selected = True
-
-        # Normal mode controls (appear only after selecting Normal)
+        # Normal Mode Controls
         BoxLayout:
             orientation: "vertical"
             spacing: 8
@@ -143,7 +135,7 @@
                 size_hint_y: None
                 height: 28
 
-        # Practice mode controls (simple)
+        # Practice Mode Controls
         BoxLayout:
             orientation: "vertical"
             spacing: 8
