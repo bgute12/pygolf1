@@ -27,7 +27,6 @@ HOLES = [
     {"id": 5, "pos_hint": (0.9331, 0.3715), "radius": 8, "last_points": None},
 ]
 
-MIN_READING = 0
 MAX_READING = 10  # base max points for distance calculation
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
@@ -110,7 +109,6 @@ def bt_auto_thread(hole_id, name_prefix):
                 msg = data.decode(errors="ignore").strip()
                 if msg:
                     print(f"[BT][{name_prefix}] {msg}")
-                    # When a hit is detected, queue it for processing
                     parts = msg.split(":")
                     if len(parts) >= 3 and parts[0] == "HOLE":
                         try:
@@ -128,7 +126,7 @@ def bt_auto_thread(hole_id, name_prefix):
 
 
 # -----------------------
-# Kivy Game Classes
+# GolfGreen Widget
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -164,21 +162,6 @@ class GolfGreen(Widget):
                              self.y + self.ball_y - self.ball_radius),
                         size=(self.ball_radius*2, self.ball_radius*2))
 
-        # Update hole labels
-        try:
-            root = App.get_running_app().root
-            if root and hasattr(root, 'ids'):
-                for i, hole in enumerate(self.holes, start=1):
-                    hid = f"h{i}"
-                    lbl = root.ids.get(hid)
-                    if lbl:
-                        hx, hy = self.get_scaled_hole_pos(hole)
-                        lbl.pos = (hx - lbl.width / 2, hy + 12)
-                        lp = hole.get("last_points")
-                        lbl.text = f"H{i}: {lp if lp is not None else '-'}"
-        except Exception:
-            pass
-
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
         px = self.x + phx * max(1, self.width)
@@ -199,10 +182,6 @@ class GolfGreen(Widget):
         self.update_canvas()
         print("Players registered:", self.players)
 
-    def get_player_score(self, player):
-        scores = self.player_scores.get(player, [])
-        return sum(scores) if scores else 0
-
     def start_game(self):
         if not self.players:
             return
@@ -215,17 +194,6 @@ class GolfGreen(Widget):
         self.update_canvas()
         print("Game started. Current player:", self.current_player)
 
-    def replace_ball(self):
-        if not self.game_started or self.current_player_index != 0:
-            return
-        self.ball_placed = False
-        self.ball_x = -1000
-        self.ball_y = -1000
-        for h in self.holes:
-            h["last_points"] = None
-        self.update_canvas()
-        print("Ball replaced for re-placement by first player")
-
     def next_player(self):
         if not self.players:
             return
@@ -233,88 +201,51 @@ class GolfGreen(Widget):
         if self.current_player_index >= len(self.players):
             self.current_player_index = 0
             self.current_round += 1
-            for h in self.holes:
-                h["last_points"] = None
-            self.ball_placed = False
-            self.ball_x = -1000
-            self.ball_y = -1000
         self.current_player = self.players[self.current_player_index]
         self.update_canvas()
         print(f"Next player: {self.current_player} (Round {self.current_round})")
 
-    def clear_scores(self):
-        self.player_scores = {p: [] for p in self.players}
-        self.update_canvas()
 
-    def on_touch_down(self, touch):
-        if not (self.mode_selected and self.mode == "Normal" and self.game_started):
-            return False
-        root = App.get_running_app().root
-        side = root.ids.get("side_panel", None)
-        if side and side.collide_point(*touch.pos):
-            return False
-        if not self.collide_point(*touch.pos):
-            return False
-        if self.ball_placed:
-            print("Ball already placed for this round; ignore touch")
-            return True
-        self._touch_x = touch.x - self.x
-        self._touch_y = touch.y - self.y
-        Clock.schedule_once(self._place_ball, 0.05)
-        return True
+# -----------------------
+# Scoring Helper
+# -----------------------
+def calculate_points(hole_id, golf_green):
+    hole = next((h for h in golf_green.holes if h["id"] == hole_id), None)
+    if not hole:
+        return 0
 
-    def _place_ball(self, dt):
-        if self.ball_placed:
-            return
-        local_x = getattr(self, "_touch_x", None)
-        local_y = getattr(self, "_touch_y", None)
-        if local_x is None or local_y is None:
-            return
+    # Use ball position if placed; otherwise center
+    hx, hy = golf_green.ball_x, golf_green.ball_y
+    if hx < 0 or hy < 0:
+        hx = golf_green.width / 2
+        hy = golf_green.height / 2
 
-        max_diag = math.hypot(max(1, self.width), max(1, self.height))
-        nearest_hole = None
-        points_for_hole = 0
+    hole_x, hole_y = golf_green.get_scaled_hole_pos(hole)
+    dist = math.hypot(hole_x - hx, hole_y - hy)
+    max_diag = math.hypot(golf_green.width, golf_green.height)
 
-        for hole in self.holes:
-            hx, hy = self.get_scaled_hole_pos(hole)
-            dist = math.hypot(hx - self.x - local_x, hy - self.y - local_y)
+    # Points based on distance * hole number
+    points = int((dist / max_diag) * MAX_READING * hole_id)
 
-            if dist <= hole["radius"]:
-                # Ball goes in the hole → max points
-                pts = MAX_READING
-                nearest_hole = hole
-            else:
-                # Farther away = more points
-                pts = int((dist / max_diag) * MAX_READING)
-            hole["last_points"] = pts
+    # If ball is inside the hole → max points
+    if dist <= hole["radius"]:
+        points = MAX_READING * hole_id
 
-            if pts > points_for_hole:
-                points_for_hole = pts
-                nearest_hole = hole if dist <= hole["radius"] else nearest_hole
-
-        # Update current player's score if ball goes in
-        if self.current_player and nearest_hole and math.hypot(
-                self.get_scaled_hole_pos(nearest_hole)[0] - self.x - local_x,
-                self.get_scaled_hole_pos(nearest_hole)[1] - self.y - local_y
-        ) <= nearest_hole["radius"]:
-            self.player_scores.setdefault(self.current_player, []).append(points_for_hole)
-            print(f"🏆 {self.current_player} scored {points_for_hole} points for hole {nearest_hole['id']}")
-
-        # Set ball visual
-        self.ball_x = local_x
-        self.ball_y = local_y
-        self.ball_placed = True
-        self.update_canvas()
+    hole["last_points"] = points
+    return points
 
 
 # -----------------------
-# Bluetooth integration
+# Bluetooth queue processing
 # -----------------------
 def process_bt_queue(dt):
-    app = App.get_running_app()
+    golf_green = App.get_running_app().root.ids.get("green")
     while not bt_event_queue.empty():
         hid = bt_event_queue.get_nowait()
-        print(f"[BT EVENT] Hole {hid} triggered")
+        if golf_green and golf_green.current_player:
+            pts = calculate_points(hid, golf_green)
+            golf_green.player_scores.setdefault(golf_green.current_player, []).append(pts)
+            print(f"🏆 {golf_green.current_player} scored {pts} points for hole {hid}")
 
 
 def start_bt_threads():
