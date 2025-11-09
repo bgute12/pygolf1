@@ -284,38 +284,31 @@ class GolfGreen(Widget):
 
         max_diag = math.hypot(max(1, self.width), max(1, self.height))
         nearest_hole = None
-        points_for_hole = 0
+        best_points = None
 
         for hole in self.holes:
             hx, hy = self.get_scaled_hole_pos(hole)
             dist = math.hypot(hx - self.x - local_x, hy - self.y - local_y)
 
-            if dist <= hole["radius"]:
-                # Ball goes in the hole → max points
-                pts = MAX_READING
-                nearest_hole = hole
-            else:
-                # Farther away = more points
-                pts = int((dist / max_diag) * MAX_READING)
+            # Points purely based on distance (closer = higher points)
+            pts = max(0, int(MAX_READING - (dist / max_diag) * MAX_READING))
             hole["last_points"] = pts
 
-            if pts > points_for_hole:
-                points_for_hole = pts
-                nearest_hole = hole if dist <= hole["radius"] else nearest_hole
+            if best_points is None or pts > best_points:
+                best_points = pts
+                nearest_hole = hole
 
-        # Update current player's score if ball goes in
-        if self.current_player and nearest_hole and math.hypot(
-                self.get_scaled_hole_pos(nearest_hole)[0] - self.x - local_x,
-                self.get_scaled_hole_pos(nearest_hole)[1] - self.y - local_y
-        ) <= nearest_hole["radius"]:
-            self.player_scores.setdefault(self.current_player, []).append(points_for_hole)
-            print(f"🏆 {self.current_player} scored {points_for_hole} points for hole {nearest_hole['id']}")
+        # Update current player's score with calculated points
+        if self.current_player and nearest_hole:
+            self.player_scores.setdefault(self.current_player, []).append(best_points)
+            print(f"🏆 {self.current_player} scored {best_points} points for hole {nearest_hole['id']}")
 
         # Set ball visual
         self.ball_x = local_x
         self.ball_y = local_y
         self.ball_placed = True
         self.update_canvas()
+
 
 
 # -----------------------
