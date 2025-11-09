@@ -27,8 +27,9 @@ MIN_READING = 0
 MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
+BALL_DIAMETER = 10         # Small ball size
+BALL_PLACE_DELAY = 0.2     # Seconds delay before placing the ball
 
-# Names to search for (partial match). ESP32 devices should advertise names containing these.
 HOLE_NAME_PREFIXES = {
     1: "HOLE_1",
     2: "HOLE_2",
@@ -37,10 +38,7 @@ HOLE_NAME_PREFIXES = {
     5: "HOLE_5",
 }
 
-# Bluetooth reconnect delay (seconds)
 BT_RETRY_DELAY = 5
-
-# Queue for passing events from BT threads to Kivy main thread
 bt_event_queue = Queue()
 
 # -----------------------
@@ -83,7 +81,9 @@ class GolfGreen(Widget):
                         size=(hole["radius"] * 2, hole["radius"] * 2))
             if self.ball_placed:
                 Color(1, 1, 1, 1)
-                Ellipse(pos=(self.x + self.ball_x - 10, self.y + self.ball_y - 10), size=(20, 20))
+                Ellipse(pos=(self.x + self.ball_x - BALL_DIAMETER/2,
+                             self.y + self.ball_y - BALL_DIAMETER/2),
+                        size=(BALL_DIAMETER, BALL_DIAMETER))
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -105,27 +105,23 @@ class GolfGreen(Widget):
         self.ball_placed = False
         self.game_started = False
         self.update_canvas()
-        print("Registered players:", self.players)
 
     def start_game(self):
         if not self.players:
-            print("No players, cannot start")
             return
         self.game_started = True
         self.ball_placed = False
         self.current_player_index = 0
-        self.current_player = self.players[self.current_player_index]
+        self.current_player = self.players[0]
         self.mode = "Normal"
         self.mode_selected = True
         self.update_canvas()
-        print("Game started. Current player:", self.current_player)
 
     def replace_ball(self):
         self.ball_x = -1000
         self.ball_y = -1000
         self.ball_placed = False
         self.update_canvas()
-        print("Replace Ball: ready for re-placement")
 
     def next_player(self):
         if not self.players:
@@ -135,14 +131,12 @@ class GolfGreen(Widget):
             self.current_player_index = 0
             self.current_round += 1
             if self.current_round > MAX_ROUNDS:
-                print("Reached max rounds")
                 return
             self.ball_placed = False
             self.ball_x = -1000
             self.ball_y = -1000
         self.current_player = self.players[self.current_player_index]
         self.update_canvas()
-        print(f"Next player: {self.current_player} (Round {self.current_round})")
 
     def clear_scores(self):
         self.player_scores = {p: [] for p in self.players}
@@ -155,25 +149,32 @@ class GolfGreen(Widget):
         return max(MIN_READING, min(MAX_READING, pts))
 
     # -----------------------
-    # Touch placement
+    # Touch placement with delay
     # -----------------------
     def on_touch_down(self, touch):
         if not self._accept_touches or not self.collide_point(*touch.pos):
             return False
-
         if not (self.mode_selected and self.mode == "Normal" and self.game_started):
             return False
-
         if self.ball_placed:
             return True
 
-        local_x = touch.x - self.x
-        local_y = touch.y - self.y
+        self._touch_x = touch.x - self.x
+        self._touch_y = touch.y - self.y
+        Clock.schedule_once(self._place_ball, BALL_PLACE_DELAY)
+        return True
+
+    def _place_ball(self, dt):
+        if self.ball_placed:
+            return
+        local_x = getattr(self, "_touch_x", None)
+        local_y = getattr(self, "_touch_y", None)
+        if local_x is None or local_y is None:
+            return
         self.ball_x = local_x
         self.ball_y = local_y
         self.ball_placed = True
 
-        # calculate points
         max_dist = math.hypot(max(1, self.width), max(1, self.height))
         results = []
         for i, hole in enumerate(self.holes):
@@ -192,7 +193,6 @@ class GolfGreen(Widget):
             self.player_scores.setdefault(self.current_player, []).append(score)
 
         self.update_canvas()
-        return True
 
     # -----------------------
     # Bluetooth event handling
@@ -200,7 +200,6 @@ class GolfGreen(Widget):
     def handle_hole_event(self, hole_id):
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
-            print("Unknown hole id", hole_id)
             return
         hx, hy = self.get_scaled_hole_pos(hole)
         self.ball_x = hx - self.x
@@ -208,7 +207,6 @@ class GolfGreen(Widget):
         self.ball_placed = True
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
-            print(f"Awarded {MAX_READING} to {self.current_player} for hole {hole_id}")
         Clock.schedule_once(lambda dt: self.next_player(), 1.0)
         self.update_canvas()
 
@@ -241,13 +239,13 @@ class MiniGolfApp(App):
             self.green.handle_hole_event(hole_id)
 
 # -----------------------
-# Bluetooth threads (Classic RFCOMM)
+# Bluetooth threads
 # -----------------------
 try:
     import bluetooth
 except ImportError:
-    print("PyBluez not installed. Bluetooth will be disabled.")
     bluetooth = None
+    print("PyBluez not installed, Bluetooth disabled.")
 
 def bt_listen_thread(hole_id, name_prefix, callback):
     if not bluetooth:
@@ -255,7 +253,6 @@ def bt_listen_thread(hole_id, name_prefix, callback):
     sock = None
     while True:
         try:
-            print(f"[BT] Scanning for {name_prefix} ...")
             nearby = bluetooth.discover_devices(duration=6, lookup_names=True)
             target_addr = None
             for addr, name in nearby:
@@ -285,8 +282,8 @@ def bt_listen_thread(hole_id, name_prefix, callback):
                                 bt_event_queue.put(hid)
                         except Exception:
                             pass
-        except Exception as e:
-            print("[BT] Exception:", e)
+        except Exception:
+            pass
         finally:
             try: sock.close()
             except Exception: pass
@@ -306,8 +303,8 @@ def process_bt_queue(dt):
         try:
             hole_id = bt_event_queue.get_nowait()
             Clock.schedule_once(lambda dt, hid=hole_id: app.on_bt_event(hid), 0)
-        except Exception as e:
-            print("BT queue error:", e)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     MiniGolfApp().run()
