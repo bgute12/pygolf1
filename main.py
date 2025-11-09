@@ -283,7 +283,6 @@ class GolfGreen(Widget):
                 # Ball goes in the hole → max points
                 pts = MAX_READING
                 nearest_hole = hole
-        # set ball visual
             else:
                 # Farther away = more points
                 pts = int((dist / max_diag) * MAX_READING)
