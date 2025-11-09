@@ -7,7 +7,6 @@ import serial
 from queue import Queue
 
 from kivy.app import App
-from kivy.lang import Builder
 from kivy.clock import Clock
 from kivy.properties import (
     ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
@@ -32,7 +31,7 @@ MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
-# Device name prefixes for each hole’s ESP32/HC-05 module
+# Device name prefixes for Bluetooth ESP32/HC-05 per hole
 HOLE_NAME_PREFIXES = {
     1: "HOLE_1",
     2: "HOLE_2",
@@ -44,9 +43,8 @@ HOLE_NAME_PREFIXES = {
 BT_RETRY_DELAY = 5  # seconds
 bt_event_queue = Queue()
 
-
 # -----------------------
-# Utility: run shell cmd
+# Utility
 # -----------------------
 def run_cmd(cmd):
     try:
@@ -56,9 +54,8 @@ def run_cmd(cmd):
         print("⚠️", e)
         return ""
 
-
 # -----------------------
-# Bluetooth Thread
+# Auto Bluetooth Thread
 # -----------------------
 def bt_auto_thread(hole_id, name_prefix):
     port = f"/dev/rfcomm{hole_id}"
@@ -77,7 +74,7 @@ def bt_auto_thread(hole_id, name_prefix):
                     break
 
             if not addr:
-                print(f"[BT] ❌ {name_prefix} not found, retrying in {BT_RETRY_DELAY}s")
+                print(f"[BT] ❌ {name_prefix} not found; retrying in {BT_RETRY_DELAY}s")
                 time.sleep(BT_RETRY_DELAY)
                 continue
 
@@ -110,7 +107,6 @@ def bt_auto_thread(hole_id, name_prefix):
                 msg = data.decode(errors="ignore").strip()
                 if msg:
                     print(f"[BT][{name_prefix}] {msg}")
-                    # When a hit is detected, queue it for processing
                     parts = msg.split(":")
                     if len(parts) >= 3 and parts[0] == "HOLE":
                         try:
@@ -119,13 +115,11 @@ def bt_auto_thread(hole_id, name_prefix):
                                 bt_event_queue.put(hid)
                         except ValueError:
                             pass
-
         except Exception as e:
             print(f"[BT] Exception ({name_prefix}):", e)
         finally:
             run_cmd(f"sudo rfcomm release {hole_id} || true")
             time.sleep(BT_RETRY_DELAY)
-
 
 # -----------------------
 # Kivy Game Classes
@@ -136,6 +130,7 @@ class GolfGreen(Widget):
     current_round = NumericProperty(1)
     current_player = StringProperty("")
     player_scores = DictProperty({})
+    live_points_by_hole = DictProperty({})
     ball_x = NumericProperty(-1000)
     ball_y = NumericProperty(-1000)
     holes = ListProperty(HOLES.copy())
@@ -144,11 +139,16 @@ class GolfGreen(Widget):
     mode_selected = BooleanProperty(True)
     game_started = BooleanProperty(False)
     ball_radius = NumericProperty(6)
+    _accept_touches = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.bind(size=self.update_canvas, pos=self.update_canvas)
+        Clock.schedule_once(self._enable_touches, 0.5)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
+
+    def _enable_touches(self, dt):
+        self._accept_touches = True
 
     def update_canvas(self, *args):
         self.canvas.after.clear()
@@ -164,44 +164,28 @@ class GolfGreen(Widget):
                              self.y + self.ball_y - self.ball_radius),
                         size=(self.ball_radius*2, self.ball_radius*2))
 
-        # Update hole labels
-        try:
-            root = App.get_running_app().root
-            if root and hasattr(root, 'ids'):
-                for i, hole in enumerate(self.holes, start=1):
-                    hid = f"h{i}"
-                    lbl = root.ids.get(hid)
-                    if lbl:
-                        hx, hy = self.get_scaled_hole_pos(hole)
-                        lbl.pos = (hx - lbl.width / 2, hy + 12)
-                        lp = hole.get("last_points")
-                        lbl.text = f"H{i}: {lp if lp is not None else '-'}"
-        except Exception:
-            pass
-
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
-        px = self.x + phx * max(1, self.width)
-        py = self.y + phy * max(1, self.height)
+        px = self.x + phx * max(0, self.width)
+        py = self.y + phy * max(0, self.height)
         return px, py
 
-    def register_players(self, count=2):
+    def register_players(self, count=1):
+        count = max(1, min(count, MAX_PLAYERS))
         self.players = [f"Player {i+1}" for i in range(count)]
         self.player_scores = {p: [] for p in self.players}
         self.current_player_index = 0
         self.current_round = 1
-        self.current_player = self.players[0]
+        self.current_player = self.players[0] if self.players else ""
         self.ball_placed = False
-        self.game_started = False
+        newholes = []
         for h in HOLES:
-            h["last_points"] = None
-        self.holes = HOLES.copy()
+            nh = h.copy()
+            nh["last_points"] = None
+            newholes.append(nh)
+        self.holes = newholes
         self.update_canvas()
-        print("Players registered:", self.players)
-
-    def get_player_score(self, player):
-        scores = self.player_scores.get(player, [])
-        return sum(scores) if scores else 0
+        print("Registered players:", self.players)
 
     def start_game(self):
         if not self.players:
@@ -213,18 +197,7 @@ class GolfGreen(Widget):
         self.ball_x = -1000
         self.ball_y = -1000
         self.update_canvas()
-        print("Game started. Current player:", self.current_player)
-
-    def replace_ball(self):
-        if not self.game_started or self.current_player_index != 0:
-            return
-        self.ball_placed = False
-        self.ball_x = -1000
-        self.ball_y = -1000
-        for h in self.holes:
-            h["last_points"] = None
-        self.update_canvas()
-        print("Ball replaced for re-placement by first player")
+        print("Game started:", self.current_player)
 
     def next_player(self):
         if not self.players:
@@ -233,95 +206,64 @@ class GolfGreen(Widget):
         if self.current_player_index >= len(self.players):
             self.current_player_index = 0
             self.current_round += 1
-            for h in self.holes:
-                h["last_points"] = None
             self.ball_placed = False
             self.ball_x = -1000
             self.ball_y = -1000
+            for i, hole in enumerate(self.holes):
+                nh = hole.copy()
+                nh["last_points"] = None
+                self.holes[i] = nh
+            self.live_points_by_hole.clear()
         self.current_player = self.players[self.current_player_index]
         self.update_canvas()
         print(f"Next player: {self.current_player} (Round {self.current_round})")
 
-    def clear_scores(self):
-        self.player_scores = {p: [] for p in self.players}
-        self.update_canvas()
-
-    def on_touch_down(self, touch):
-        if not (self.mode_selected and self.mode == "Normal" and self.game_started):
-            return False
-        root = App.get_running_app().root
-        side = root.ids.get("side_panel", None)
-        if side and side.collide_point(*touch.pos):
-            return False
-        if not self.collide_point(*touch.pos):
-            return False
-        if self.ball_placed:
-            print("Ball already placed for this round; ignore touch")
-            return True
-        self._touch_x = touch.x - self.x
-        self._touch_y = touch.y - self.y
-        Clock.schedule_once(self._place_ball, 0.05)
-        return True
-
-    def _place_ball(self, dt):
-        if self.ball_placed:
+    def handle_hole_event(self, hole_id):
+        hole = next((h for h in self.holes if h["id"] == hole_id), None)
+        if not hole:
             return
-        local_x = getattr(self, "_touch_x", None)
-        local_y = getattr(self, "_touch_y", None)
-        if local_x is None or local_y is None:
-            return
-        # compute points for each hole
-        max_dist = math.hypot(max(1, self.width), max(1, self.height))
-        nearest_hole = None
-        for i, hole in enumerate(self.holes):
-            hx, hy = self.get_scaled_hole_pos(hole)
-            dist = math.hypot(hx - self.x - local_x, hy - self.y - local_y)
-            pts = 0 if dist <= hole["radius"] else MAX_READING
-            hole["last_points"] = pts
-            if pts == 0:
-                nearest_hole = hole
-        # update player's score if hit
-        if self.current_player and nearest_hole:
-            hid = nearest_hole["id"]
-            self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
-            print(f"🏆 {self.current_player} scored {MAX_READING} points for hole {hid}")
-        # set ball visual
-        self.ball_x = local_x
-        self.ball_y = local_y
+        hx, hy = self.get_scaled_hole_pos(hole)
+        Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.5)
+
+    def place_ball(self, hx, hy, hole_id):
+        self.ball_x = hx - self.x
+        self.ball_y = hy - self.y
         self.ball_placed = True
+        if self.current_player:
+            self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
+        Clock.schedule_once(lambda dt: self.next_player(), 1)
         self.update_canvas()
 
+# -----------------------
+# Root + Bluetooth Processing
+# -----------------------
+class RootWidget(BoxLayout):
+    pass
 
-# -----------------------
-# Bluetooth integration
-# -----------------------
 def process_bt_queue(dt):
     app = App.get_running_app()
     while not bt_event_queue.empty():
         hid = bt_event_queue.get_nowait()
-        print(f"[BT EVENT] Hole {hid} triggered")
-
+        Clock.schedule_once(lambda dt, hole=hid: app.root.ids.golf.handle_hole_event(hole), 0)
 
 def start_bt_threads():
     for hid, prefix in HOLE_NAME_PREFIXES.items():
         threading.Thread(target=bt_auto_thread, args=(hid, prefix), daemon=True).start()
 
-
 # -----------------------
-# Root and App
+# App
 # -----------------------
-class RootWidget(BoxLayout):
-    pass
-
-
 class MiniGolfApp(App):
     def build(self):
-        Builder.load_file("minigolf.kv")
         root = RootWidget()
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
         return root
 
+    def on_start(self):
+        # auto-register 2 players
+        self.root.ids.golf.register_players(2)
 
+# -----------------------
 if __name__ == "__main__":
     MiniGolfApp().run()
