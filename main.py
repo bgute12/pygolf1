@@ -315,16 +315,30 @@ class GolfGreen(Widget):
             print(f"⚠️ Hole {hole_id} not found")
             return
 
-        # Use the hole’s last calculated points or default to 5
-        pts = hole.get("last_points", 5)
-        player = self.current_player
+        # Use the hole’s last calculated points or default to a mid value
+        pts = hole.get("last_points")
+        if pts is None:
+            # If no last_points, estimate based on hole position distance
+            hx, hy = self.get_scaled_hole_pos(hole)
+            max_diag = math.hypot(max(1, self.width), max(1, self.height))
+            # Just a default mid score if unknown
+            pts = int(MAX_READING / 2)
 
-        if player:
-            self.player_scores.setdefault(player, []).append(pts)
-            print(f"🏁 Hole {hole_id} → {player} scored {pts} points!")
-            self.update_scores_display()
-        else:
+        player = self.current_player
+        if not player:
             print("⚠️ No active player to award points to")
+            return
+
+        # Add points to current player
+        self.player_scores.setdefault(player, []).append(pts)
+        print(f"🏁 Hole {hole_id} → {player} scored {pts} points!")
+
+        # Update UI label
+        self.update_scores_display()
+
+        # ✅ Automatically move to the next player
+        self.next_player()
+
 
 
 
