@@ -4,6 +4,7 @@ import threading
 import time
 import subprocess
 import serial
+from time import time as now
 from queue import Queue
 
 from kivy.app import App
