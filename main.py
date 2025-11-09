@@ -13,11 +13,6 @@ from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, Ellipse
 
-# Use the working Bluetooth library you had before
-# import your previous BT library here
-# e.g., from bluetooth_classic import connect_and_listen
-# (assuming you already have a working bt_listen_thread function)
-
 # -----------------------
 # Config
 # -----------------------
@@ -34,7 +29,7 @@ MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
-# Names to search for
+# Hole names for BT scanning
 HOLE_NAME_PREFIXES = {
     1: "HOLE_1",
     2: "HOLE_2",
@@ -46,9 +41,8 @@ HOLE_NAME_PREFIXES = {
 # Bluetooth reconnect delay (seconds)
 BT_RETRY_DELAY = 5
 
-# Queue for BT events
+# Queue for passing BT events to Kivy main thread
 bt_event_queue = Queue()
-
 
 # -----------------------
 # Kivy GUI / Game Code
@@ -161,20 +155,52 @@ class RootWidget(BoxLayout):
 class MiniGolfApp(App):
     def build(self):
         root = RootWidget()
-        # reference GolfGreen by KV id
         self.green = root.ids.get("golf")
+        # start Bluetooth polling
+        Clock.schedule_interval(self.process_bt_queue, 0.1)
         return root
 
     def on_start(self):
         if self.green:
             self.green.register_players(2)
             self.green.start_game()
-        # start BT threads using your working library
-        # start_bluetooth_threads(self.on_bt_event)
+        # start BT threads for each hole
+        start_bluetooth_threads(self.on_bt_event)
 
     def on_bt_event(self, hole_id):
         if self.green:
             self.green.handle_hole_event(hole_id)
+
+    def process_bt_queue(self, dt):
+        while not bt_event_queue.empty():
+            try:
+                hole_id = bt_event_queue.get_nowait()
+                Clock.schedule_once(lambda dt, hid=hole_id: self.on_bt_event(hid), 0)
+            except Exception as e:
+                print("Error processing BT queue:", e)
+
+
+# -----------------------
+# Bluetooth background code
+# -----------------------
+def bt_listen_thread(hole_id, name_prefix, callback):
+    """
+    Thread: simulate connecting to device with name_prefix.
+    Pushes events into bt_event_queue.
+    Replace this with your working BT code.
+    """
+    import random
+    while True:
+        # simulate a hole trigger randomly every 10-30s
+        time.sleep(random.randint(10, 30))
+        print(f"[BT] Simulated event: Hole {hole_id}")
+        bt_event_queue.put(hole_id)
+
+
+def start_bluetooth_threads(main_thread_callback):
+    for hole_id, prefix in HOLE_NAME_PREFIXES.items():
+        t = threading.Thread(target=bt_listen_thread, args=(hole_id, prefix, main_thread_callback), daemon=True)
+        t.start()
 
 
 if __name__ == "__main__":
