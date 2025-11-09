@@ -101,7 +101,7 @@ def bt_auto_thread(hole_id, name_prefix):
             time.sleep(BT_RETRY_DELAY)
 
 # -----------------------
-# GolfGreen (final behavior)
+# GolfGreen (fixed: includes next_player, ball persists, labels show hole score)
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -121,12 +121,13 @@ class GolfGreen(Widget):
     # Only one placement allowed per round
     placed_this_round = BooleanProperty(False)
 
-    BALL_DISPLAY_SIZE = 12   # bigger ball
+    BALL_DISPLAY_SIZE = 14   # larger ball
     HOLE_COLOR = (1, 1, 1, 1)
     BALL_COLOR = (1, 1, 1, 1)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # update positions and labels when needed
         self.bind(size=self._on_layout_change, pos=self._on_layout_change,
                   ball_placed=self._on_layout_change, ball_x=self._on_layout_change,
                   ball_y=self._on_layout_change, current_round=lambda *a: self._on_layout_change())
@@ -135,6 +136,7 @@ class GolfGreen(Widget):
     def _on_layout_change(self, *args):
         self.update_canvas()
         self._update_kv_hole_labels()
+        self._update_side_players_label()
 
     def update_canvas(self, *args):
         self.canvas.after.clear()
@@ -172,11 +174,11 @@ class GolfGreen(Widget):
             hx, hy = self.get_scaled_hole_pos(hole)
             pts = hole.get("last_points")
             lbl.text = f"H{idx}: {pts}" if pts is not None else f"H{idx}: -"
-            # compute and set size if needed
+            # ensure reasonable size
             w = lbl.width or 100
             h = lbl.height or 24
             lbl.size = (w, h)
-            # offset above hole
+            # offset above hole (radius + margin)
             offset_y = hole.get("radius", 10) + 12
             x = hx - w / 2
             y = hy + offset_y
@@ -184,6 +186,17 @@ class GolfGreen(Widget):
             x = max(0, min(x, parent_w - w))
             y = max(0, min(y, parent_h - h))
             lbl.pos = (x, y)
+
+    def _update_side_players_label(self):
+        try:
+            parent = self.parent
+            if not parent:
+                return
+            side_players = parent.ids.get("players_label")
+            if side_players:
+                side_players.text = '\n'.join(["{}: {}".format(p, self.get_player_score(p)) for p in self.players]) if self.players else "No players"
+        except Exception:
+            pass
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -198,30 +211,36 @@ class GolfGreen(Widget):
         self.current_round = 1
         self.current_player = self.players[0] if self.players else ""
         self.placed_this_round = False
-        print("Players registered:", self.players)
         self._update_side_players_label()
-
-    def _update_side_players_label(self):
-        try:
-            side_players = self.parent.ids.get("players_label") if self.parent else None
-            if side_players:
-                side_players.text = '\n'.join(["{}: {}".format(p, self.get_player_score(p)) for p in self.players]) if self.players else "No players"
-        except Exception:
-            pass
+        print("Players registered:", self.players)
 
     def get_player_score(self, player):
         scores = self.player_scores.get(player, [])
         return sum(scores) if scores else 0
 
+    def next_player(self):
+        # safe next_player: only if players exist
+        if not self.players:
+            print("No players to advance")
+            return
+        self.current_player_index = (self.current_player_index + 1) % len(self.players)
+        self.current_player = self.players[self.current_player_index]
+        # Do NOT clear the ball position here — ball should stay where it landed
+        print(f"Manually advanced to next player: {self.current_player}")
+        self._update_side_players_label()
+
     def _advance_round_after_single_placement(self):
-        # Advance round (called when placement was NOT in the hole)
+        # Advance round when placement was NOT in hole
         self.current_round += 1
         self.placed_this_round = False  # allow next round placement
-        # reset current player index to 0 (safe)
-        self.current_player_index = 0
-        self.current_player = self.players[0] if self.players else ""
-        print(f"--- Advanced to round {self.current_round} ---")
+        # reset current player index to 0 (optional)
+        if self.players:
+            self.current_player_index = 0
+            self.current_player = self.players[0]
+        else:
+            self.current_player = ""
         self._update_side_players_label()
+        print(f"--- Advanced to round {self.current_round} ---")
 
     def handle_hole_event(self, hole_id):
         if self.placed_this_round:
@@ -305,6 +324,7 @@ class GolfGreen(Widget):
         # - If ball made the hole: advance to next player (ball stays where it is)
         # - Otherwise: advance the round (single placement per round)
         if made_hole:
+            # advance to next player but keep ball where it is
             if self.players:
                 self.current_player_index = (self.current_player_index + 1) % len(self.players)
                 self.current_player = self.players[self.current_player_index]
