@@ -290,8 +290,8 @@ class GolfGreen(Widget):
             hx, hy = self.get_scaled_hole_pos(hole)
             dist = math.hypot(hx - self.x - local_x, hy - self.y - local_y)
 
-            # Points purely based on distance (closer = higher points)
-            pts = max(0, int(MAX_READING - (dist / max_diag) * MAX_READING))
+            # Points purely based on distance (farther = higher points)
+            pts = min(MAX_READING, int((dist / max_diag) * MAX_READING))
             hole["last_points"] = pts
 
             if best_points is None or pts > best_points:
@@ -308,6 +308,7 @@ class GolfGreen(Widget):
         self.ball_y = local_y
         self.ball_placed = True
         self.update_canvas()
+
 
 
 
