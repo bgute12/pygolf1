@@ -143,16 +143,25 @@ class GolfGreen(Widget):
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def update_canvas(self, *args):
-        # Only draw ball and holes, do not clear the entire canvas
-        self.canvas.after.clear()
-        with self.canvas.after:
+        self.canvas.clear()  # clear everything
+        with self.canvas:
+            # Draw background first
+            self.bg_rect = None
+            if hasattr(self, 'background'):
+                Color(1, 1, 1, 1)
+                self.bg_rect = Rectangle(source='background.png', pos=self.pos, size=self.size)
+
+            # Draw holes
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
                 Color(1, 1, 1, 1)
                 Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]), size=(hole["radius"]*2, hole["radius"]*2))
+
+            # Draw ball if placed
             if self.ball_placed:
                 Color(1, 1, 1, 1)
-                Ellipse(pos=(self.x + self.ball_x - 3, self.y + self.ball_y - 3), size=(6, 6))
+                Ellipse(pos=(self.x + self.ball_x - 5, self.y + self.ball_y - 5), size=(10, 10))
+
 
 
     def get_scaled_hole_pos(self, hole):
