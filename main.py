@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import math
 import threading
 import time
 import subprocess
 import serial
+import shutil
 from queue import Queue
 
 from kivy.app import App
@@ -27,8 +27,6 @@ HOLES = [
 
 MIN_READING = 0
 MAX_READING = 10
-MAX_PLAYERS = 3
-MAX_ROUNDS = 10
 
 HOLE_NAME_PREFIXES = {
     1: "HOLE_1",
@@ -59,7 +57,7 @@ def bt_auto_thread(hole_id, name_prefix):
     port = f"/dev/rfcomm{hole_id}"
     while True:
         try:
-            print(f"[BT] 🔍 Scanning for {name_prefix}...")
+            print(f"[BT] Scanning for {name_prefix}...")
             run_cmd("bluetoothctl scan on &")
             time.sleep(6)
             devices = run_cmd("bluetoothctl devices")
@@ -68,37 +66,38 @@ def bt_auto_thread(hole_id, name_prefix):
             addr = None
             for line in devices.splitlines():
                 if name_prefix in line:
-                    addr = line.split()[1]
-                    break
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        addr = parts[1]
+                        break
 
             if not addr:
-                print(f"[BT] ❌ {name_prefix} not found; retrying in {BT_RETRY_DELAY}s")
+                print(f"[BT] {name_prefix} not found; retrying in {BT_RETRY_DELAY}s")
                 time.sleep(BT_RETRY_DELAY)
                 continue
 
-            print(f"[BT] ✅ Found {name_prefix} at {addr}")
+            print(f"[BT] Found {name_prefix} at {addr}")
             run_cmd(f"bluetoothctl pair {addr}")
             run_cmd(f"bluetoothctl trust {addr}")
             run_cmd(f"bluetoothctl connect {addr}")
             run_cmd(f"sudo rfcomm release {hole_id} || true")
             run_cmd(f"sudo rfcomm bind {hole_id} {addr} 1")
-            print(f"[BT] 🔗 Bound {addr} -> {port}")
+            print(f"[BT] Bound {addr} -> {port}")
 
             ser = None
             for _ in range(3):
                 try:
                     ser = serial.Serial(port, 9600, timeout=1)
-                    print(f"[BT] 💬 Listening on {port}")
+                    print(f"[BT] Listening on {port}")
                     break
                 except Exception:
                     time.sleep(1)
 
             if not ser:
-                print(f"[BT] ⚠️ Cannot open {port}, retrying...")
+                print(f"[BT] Cannot open {port}, retrying...")
                 time.sleep(BT_RETRY_DELAY)
                 continue
 
-            buffer = b""
             while True:
                 data = ser.readline()
                 if not data:
@@ -139,7 +138,6 @@ class GolfGreen(Widget):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Bind redraws to relevant properties
         self.bind(size=self.update_canvas,
                   pos=self.update_canvas,
                   ball_placed=self.update_canvas,
@@ -150,18 +148,17 @@ class GolfGreen(Widget):
     def update_canvas(self, *args):
         self.canvas.after.clear()
         with self.canvas.after:
-            # Draw holes (dark so ball shows up)
+            # Draw holes (dark)
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
                 Color(0, 0, 0, 1)
                 Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]), size=(hole["radius"]*2, hole["radius"]*2))
-            # Draw ball (contrasting color)
+            # Draw ball (contrasting)
             if self.ball_placed:
                 Color(1, 0, 0, 1)
                 Ellipse(pos=(self.x + self.ball_x - 6, self.y + self.ball_y - 6), size=(12, 12))
 
     def get_scaled_hole_pos(self, hole):
-        # Use actual widget size (not max(1,...))
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
         px = self.x + phx * self.width
         py = self.y + phy * self.height
@@ -188,7 +185,7 @@ class GolfGreen(Widget):
             self.current_player_index = 0
             self.current_round += 1
         self.current_player = self.players[self.current_player_index]
-        print(f"➡️ Next: {self.current_player} (Round {self.current_round})")
+        print(f"Next: {self.current_player} (Round {self.current_round})")
 
     def handle_hole_event(self, hole_id):
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
@@ -196,17 +193,15 @@ class GolfGreen(Widget):
             print(f"Unknown hole {hole_id}")
             return
         hx, hy = self.get_scaled_hole_pos(hole)
-        # Place ball with a short delay on main thread
-        Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.5)
+        Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.25)
 
     def place_ball(self, hx, hy, hole_id):
-        # hx, hy are absolute coords; convert to local coords consistently
         self.ball_x = hx - self.x
         self.ball_y = hy - self.y
         self.ball_placed = True
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
-            print(f"🏆 {self.current_player} scored {MAX_READING} at hole {hole_id}")
+            print(f"{self.current_player} scored {MAX_READING} at hole {hole_id}")
         Clock.schedule_once(lambda dt: self.next_player(), 1)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
@@ -240,22 +235,50 @@ def start_bt_threads():
         threading.Thread(target=bt_auto_thread, args=(hid, prefix), daemon=True).start()
 
 # -----------------------
+# Optional: open bluetoothctl in a terminal emulator
+# -----------------------
+def open_bt_terminal():
+    cmd_shell = "bluetoothctl"
+    terminals = [
+        ("x-terminal-emulator", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+        ("gnome-terminal", ["--", "bash", "-c", f"{cmd_shell}; exec bash"]),
+        ("konsole", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+        ("xfce4-terminal", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+        ("lxterminal", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+        ("alacritty", ["-e", "bash", "-c", f"{cmd_shell}; exec bash"]),
+        ("xterm", ["-e", f"bash -c \"{cmd_shell}; exec bash\""]),
+    ]
+    for term, args in terminals:
+        path = shutil.which(term)
+        if path:
+            try:
+                subprocess.Popen([path] + args)
+                print(f"[BT] Opened bluetoothctl in {term}")
+                return True
+            except Exception as e:
+                print(f"[BT] Failed to launch {term}: {e}")
+    print("[BT] Could not find a terminal emulator. Run bluetoothctl manually.")
+    return False
+
+# -----------------------
 # Kivy App
 # -----------------------
 class MiniGolfApp(App):
     def build(self):
-        # Return the root widget created by the KV loader.
-        # This avoids instantiating RootWidget twice.
+        # Return the KV-created root instance (minigolf.kv contains a top-level instance)
         return Builder.load_file("minigolf.kv")
 
     def on_start(self):
-        # Assign green (expects an id 'golf' in your KV)
+        # Expect an id 'golf' in the KV
         self.green = self.root.ids.golf
         self.green.register_players(2)
 
-        # Start BT queue processor and threads
+        # Start BT processing and threads
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
+
+        # Optionally open bluetoothctl in a terminal
+        open_bt_terminal()
 
 if __name__ == "__main__":
     MiniGolfApp().run()
