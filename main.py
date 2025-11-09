@@ -119,7 +119,7 @@ def bt_auto_thread(hole_id, name_prefix):
             time.sleep(BT_RETRY_DELAY)
 
 # -----------------------
-# Kivy Game Classes (full, with touch placement + scoring)
+# Kivy Game Classes (touch placement + scoring, 500ms delay, one placement per turn)
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -137,6 +137,15 @@ class GolfGreen(Widget):
 
     # Scoring: within this many pixels from hole radius gives >0 score
     MAX_SCORE_RADIUS = 200  # adjust for your display/DPI
+    # Lock to allow only one placement per player's turn
+    placement_allowed = BooleanProperty(True)
+    # pending placement schedule id
+    _pending_place_ev = None
+
+    # visual sizes
+    BALL_DISPLAY_SIZE = 8  # diameter in px (smaller)
+    HOLE_COLOR = (1, 1, 1, 1)
+    BALL_COLOR = (1, 1, 1, 1)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -144,21 +153,24 @@ class GolfGreen(Widget):
                   pos=self.update_canvas,
                   ball_placed=self.update_canvas,
                   ball_x=self.update_canvas,
-                  ball_y=self.update_canvas)
+                  ball_y=self.update_canvas,
+                  placement_allowed=lambda inst, val: None)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def update_canvas(self, *args):
         self.canvas.after.clear()
         with self.canvas.after:
-            # Draw holes (dark)
+            # Draw holes (white)
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
-                Color(0, 0, 0, 1)
-                Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]), size=(hole["radius"]*2, hole["radius"]*2))
-            # Draw ball (contrasting)
+                Color(*self.HOLE_COLOR)
+                r = hole.get("radius", 8)
+                Ellipse(pos=(hx - r, hy - r), size=(r * 2, r * 2))
+            # Draw ball (white, smaller)
             if self.ball_placed:
-                Color(1, 0, 0, 1)
-                Ellipse(pos=(self.x + self.ball_x - 6, self.y + self.ball_y - 6), size=(12, 12))
+                Color(*self.BALL_COLOR)
+                size = self.BALL_DISPLAY_SIZE
+                Ellipse(pos=(self.x + self.ball_x - size / 2, self.y + self.ball_y - size / 2), size=(size, size))
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -173,6 +185,7 @@ class GolfGreen(Widget):
         self.current_round = 1
         self.current_player = self.players[0]
         self.game_started = True
+        self.placement_allowed = True
         print("Players registered:", self.players)
 
     def get_player_score(self, player):
@@ -187,20 +200,51 @@ class GolfGreen(Widget):
             self.current_player_index = 0
             self.current_round += 1
         self.current_player = self.players[self.current_player_index]
+        # Each new player's turn re-enables placement
+        self.placement_allowed = True
         print(f"Next: {self.current_player} (Round {self.current_round})")
 
     def handle_hole_event(self, hole_id):
+        # allow BT events to place a ball if placement is allowed
+        if not self.placement_allowed:
+            print("Placement not allowed this turn.")
+            return
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
             print(f"Unknown hole {hole_id}")
             return
         hx, hy = self.get_scaled_hole_pos(hole)
-        Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.25)
+        # schedule placement after 500 ms
+        self._schedule_place(hx, hy, hole_id)
+
+    def _schedule_place(self, hx, hy, hole_id=None):
+        # cancel any previously scheduled placement for safety
+        if self._pending_place_ev is not None:
+            try:
+                Clock.unschedule(self._pending_place_ev)
+            except Exception:
+                pass
+            self._pending_place_ev = None
+        # block further placements until next player's turn
+        self.placement_allowed = False
+        # schedule place in 0.5 seconds
+        self._pending_place_ev = Clock.schedule_once(lambda dt: self._do_place(hx, hy, hole_id), 0.5)
+
+    def _do_place(self, hx, hy, hole_id=None):
+        self._pending_place_ev = None
+        self.place_ball(hx, hy, hole_id)
 
     def place_ball(self, hx, hy, hole_id=None):
         """
         hx,hy are absolute coords (screen). If hole_id provided we prefer that hole as target.
         """
+        # if placement not allowed (guard)
+        if not self.placement_allowed and self.ball_placed:
+            # This situation may happen if multiple triggers occur; ignore
+            print("Ignored placement; already placed this turn.")
+            return
+
+        # Convert to local coords and place visually immediately
         self.ball_x = hx - self.x
         self.ball_y = hy - self.y
         self.ball_placed = True
@@ -240,6 +284,7 @@ class GolfGreen(Widget):
             self.player_scores.setdefault(self.current_player, []).append(score)
             print(f"{self.current_player} scored {score} (dist={int(dist)} px) at hole {target_hole['id']}")
 
+        # advance player after short delay and redraw
         Clock.schedule_once(lambda dt: self.next_player(), 1)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
@@ -247,6 +292,7 @@ class GolfGreen(Widget):
         self.player_scores = {p: [] for p in self.players}
         self.ball_placed = False
         self.ball_x, self.ball_y = -1000, -1000
+        self.placement_allowed = True
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def start_game(self):
@@ -255,15 +301,20 @@ class GolfGreen(Widget):
         if self.players:
             self.current_player_index = 0
             self.current_player = self.players[0]
+        self.placement_allowed = True
 
     def on_touch_down(self, touch):
         # Only handle touches inside this widget
         if not self.collide_point(*touch.pos):
             return super().on_touch_down(touch)
 
+        if not self.placement_allowed:
+            print("You already placed this turn.")
+            return True
+
         tx, ty = touch.pos  # absolute coordinates
-        # Place the ball exactly where the user touched (scoring uses same coordinate system)
-        Clock.schedule_once(lambda dt: self.place_ball(tx, ty), 0)
+        # schedule placement after 500 ms, and block further placements until next_player
+        self._schedule_place(tx, ty)
         return True
 
 class RootWidget(BoxLayout):
@@ -326,7 +377,8 @@ class MiniGolfApp(App):
         start_bt_threads()
 
         # Optional: open bluetoothctl terminal for manual pairing/debug
-        open_bt_terminal()
+        # call the global function so KV button (if used) also works
+        # open_bt_terminal()  # uncomment if you want it open automatically
 
 if __name__ == "__main__":
     MiniGolfApp().run()
