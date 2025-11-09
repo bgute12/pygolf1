@@ -241,11 +241,12 @@ class MiniGolfApp(App):
         # Access GolfGreen later via self.root.ids.golf
         Clock.schedule_interval(process_bt_queue, 0.1)
         start_bt_threads()
-        self.green = self.root.ids.golf
+        
 
 
 
     def on_start(self):
+        self.green = self.root.ids.golf
         # Register default 2 players
         self.green.register_players(2)
 
