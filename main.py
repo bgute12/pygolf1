@@ -1,4 +1,10 @@
 import math
+import threading
+import time
+import subprocess
+import serial
+from queue import Queue
+
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.properties import (
@@ -24,7 +30,110 @@ MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
+# Bluetooth settings
+HOLE_NAME_PREFIXES = {
+    1: "HOLE_1",
+    2: "HOLE_2",
+    3: "HOLE_3",
+    4: "HOLE_4",
+    5: "HOLE_5",
+}
+BT_RETRY_DELAY = 5
+bt_event_queue = Queue()
 
+# -----------------------
+# Utility function
+# -----------------------
+def run_cmd(cmd):
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        return result.stdout.strip()
+    except Exception as e:
+        print("⚠️", e)
+        return ""
+
+# -----------------------
+# Bluetooth thread
+# -----------------------
+def bt_auto_thread(hole_id, name_prefix):
+    port = f"/dev/rfcomm{hole_id}"
+    while True:
+        try:
+            print(f"[BT] 🔍 Scanning for {name_prefix}...")
+            run_cmd("bluetoothctl scan on &")
+            time.sleep(6)
+            devices = run_cmd("bluetoothctl devices")
+            run_cmd("bluetoothctl scan off")
+
+            addr = None
+            for line in devices.splitlines():
+                if name_prefix in line:
+                    addr = line.split()[1]
+                    break
+
+            if not addr:
+                print(f"[BT] ❌ {name_prefix} not found, retrying in {BT_RETRY_DELAY}s")
+                time.sleep(BT_RETRY_DELAY)
+                continue
+
+            print(f"[BT] ✅ Found {name_prefix} at {addr}")
+            run_cmd(f"bluetoothctl pair {addr}")
+            run_cmd(f"bluetoothctl trust {addr}")
+            run_cmd(f"bluetoothctl connect {addr}")
+            run_cmd(f"sudo rfcomm release {hole_id} || true")
+            run_cmd(f"sudo rfcomm bind {hole_id} {addr} 1")
+            print(f"[BT] 🔗 Bound {addr} -> {port}")
+
+            ser = None
+            for _ in range(3):
+                try:
+                    ser = serial.Serial(port, 9600, timeout=1)
+                    print(f"[BT] 💬 Listening on {port}")
+                    break
+                except Exception:
+                    time.sleep(1)
+
+            if not ser:
+                print(f"[BT] ⚠️ Cannot open {port}, retrying...")
+                time.sleep(BT_RETRY_DELAY)
+                continue
+
+            while True:
+                data = ser.readline()
+                if not data:
+                    continue
+                msg = data.decode(errors="ignore").strip()
+                if msg:
+                    print(f"[BT][{name_prefix}] {msg}")
+                    # message format: "HOLE:<hole_id>:1"
+                    parts = msg.split(":")
+                    if len(parts) >= 3 and parts[0] == "HOLE":
+                        try:
+                            hid = int(parts[1])
+                            if parts[2].startswith("1"):
+                                bt_event_queue.put(hid)
+                        except ValueError:
+                            pass
+        except Exception as e:
+            print(f"[BT] Exception ({name_prefix}):", e)
+        finally:
+            run_cmd(f"sudo rfcomm release {hole_id} || true")
+            time.sleep(BT_RETRY_DELAY)
+
+def process_bt_queue(dt):
+    app = App.get_running_app()
+    while not bt_event_queue.empty():
+        hid = bt_event_queue.get_nowait()
+        # schedule ball placement in Kivy
+        Clock.schedule_once(lambda dt, hole_id=hid: app.root.ids.golf.handle_bt_hole(hole_id), 0)
+
+def start_bt_threads():
+    for hid, prefix in HOLE_NAME_PREFIXES.items():
+        threading.Thread(target=bt_auto_thread, args=(hid, prefix), daemon=True).start()
+
+# -----------------------
+# GolfGreen
+# -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
     current_player_index = NumericProperty(0)
@@ -36,11 +145,11 @@ class GolfGreen(Widget):
     holes = ListProperty(HOLES.copy())
     ball_placed = BooleanProperty(False)
     game_started = BooleanProperty(False)
-    mode_selected = BooleanProperty(True)  # always normal mode
-    mode = StringProperty("Normal")
 
     ball_radius = NumericProperty(6)
-    _accept_touches = False  # for startup ghost touches
+    _accept_touches = False
+    mode_selected = BooleanProperty(True)
+    mode = StringProperty("Normal")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -54,19 +163,17 @@ class GolfGreen(Widget):
     def update_canvas(self, *args):
         self.canvas.after.clear()
         with self.canvas.after:
-            # draw holes
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
                 Color(1, 1, 1, 1)
                 Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]),
                         size=(hole["radius"]*2, hole["radius"]*2))
-            # draw ball
             if self.ball_placed:
                 Color(1, 1, 1, 1)
-                Ellipse(pos=(self.x + self.ball_x - self.ball_radius, self.y + self.ball_y - self.ball_radius),
+                Ellipse(pos=(self.x + self.ball_x - self.ball_radius,
+                             self.y + self.ball_y - self.ball_radius),
                         size=(self.ball_radius*2, self.ball_radius*2))
 
-        # update hole labels
         try:
             root = App.get_running_app().root
             if root and hasattr(root, 'ids'):
@@ -99,14 +206,12 @@ class GolfGreen(Widget):
         self.current_player = self.players[0] if self.players else ""
         self.ball_placed = False
         self.game_started = False
-        # reset holes
         self.holes = [{**h, "last_points": None} for h in HOLES]
         self.update_canvas()
         print("Registered players:", self.players)
 
     def start_game(self):
         if not self.players:
-            print("No players registered!")
             return
         self.game_started = True
         self.current_player_index = 0
@@ -117,13 +222,26 @@ class GolfGreen(Widget):
         self.update_canvas()
         print("Game started. Current player:", self.current_player)
 
+    def handle_bt_hole(self, hole_id):
+        """Called when Bluetooth event triggers a hole hit"""
+        if self.ball_placed:
+            print("Ball already placed, ignoring BT event.")
+            return
+        hx, hy = self.get_scaled_hole_pos(next(h for h in self.holes if h["id"] == hole_id))
+        self.ball_x = hx - self.x
+        self.ball_y = hy - self.y
+        self.ball_placed = True
+        if self.current_player:
+            self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
+        print(f"[BT] Ball placed automatically for player {self.current_player} at hole {hole_id}")
+        self.update_canvas()
+
     def replace_ball(self):
         if not self.game_started or self.current_player_index != 0:
             return
         self.ball_x = -1000
         self.ball_y = -1000
         self.ball_placed = False
-        # reset last_points
         self.holes = [{**h, "last_points": None} for h in HOLES]
         self.update_canvas()
         print("Ball replaced for first player.")
@@ -135,7 +253,6 @@ class GolfGreen(Widget):
         if self.current_player_index >= len(self.players):
             self.current_player_index = 0
             self.current_round += 1
-            # reset ball for new round
             self.ball_placed = False
             self.ball_x = -1000
             self.ball_y = -1000
@@ -144,58 +261,17 @@ class GolfGreen(Widget):
         self.update_canvas()
         print(f"Next player: {self.current_player} (Round {self.current_round})")
 
-    def on_touch_down(self, touch):
-        if not self._accept_touches:
-            return True
-        if not (self.mode_selected and self.mode == "Normal" and self.game_started):
-            return False
-
-        # prevent touching side panel
-        root = App.get_running_app().root
-        side = root.ids.get("side_panel")
-        if side and side.collide_point(*touch.pos):
-            return False
-
-        if not self.collide_point(*touch.pos):
-            return False
-
-        if self.ball_placed:
-            print("Ball already placed this round; ignoring touch.")
-            return True
-
-        self._touch_x = touch.x - self.x
-        self._touch_y = touch.y - self.y
-        Clock.schedule_once(self._place_ball, 0.2)  # short delay
-        return True
-
-    def _place_ball(self, dt):
-        if self.ball_placed:
-            return
-        self.ball_x = getattr(self, "_touch_x", -1000)
-        self.ball_y = getattr(self, "_touch_y", -1000)
-        self.ball_placed = True
-        # update last_points for holes
-        max_dist = math.hypot(self.width, self.height)
-        for i, hole in enumerate(self.holes):
-            hx, hy = self.get_scaled_hole_pos(hole)
-            dist = math.hypot(hx - self.x - self.ball_x, hy - self.y - self.ball_y)
-            pts = int(round(min(MAX_READING, max(MIN_READING, dist / max_dist * MAX_READING))))
-            self.holes[i]["last_points"] = pts
-        # add score
-        if self.current_player:
-            self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
-        self.update_canvas()
-        print(f"Ball placed for {self.current_player} at ({self.ball_x:.1f},{self.ball_y:.1f})")
-
-
+# -----------------------
+# Kivy App
+# -----------------------
 class RootWidget(BoxLayout):
     pass
 
-
 class MiniGolfApp(App):
     def build(self):
+        Clock.schedule_interval(process_bt_queue, 0.1)
+        start_bt_threads()
         return RootWidget()
-
 
 if __name__ == "__main__":
     MiniGolfApp().run()
