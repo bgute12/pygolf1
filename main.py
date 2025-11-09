@@ -18,11 +18,11 @@ from kivy.graphics import Color, Ellipse
 # Config
 # -----------------------
 HOLES = [
-    {"id": 1, "pos_hint": (0.0913, 0.6378), "radius": 8, "last_points": None},
-    {"id": 2, "pos_hint": (0.3620, 0.7678), "radius": 8, "last_points": None},
-    {"id": 3, "pos_hint": (0.1985, 0.2817), "radius": 8, "last_points": None},
-    {"id": 4, "pos_hint": (0.7452, 0.2276), "radius": 8, "last_points": None},
-    {"id": 5, "pos_hint": (0.9331, 0.3715), "radius": 8, "last_points": None},
+    {"id": 1, "pos_hint": (0.0913, 0.6378), "radius": 10, "last_points": None},
+    {"id": 2, "pos_hint": (0.3620, 0.7678), "radius": 10, "last_points": None},
+    {"id": 3, "pos_hint": (0.1985, 0.2817), "radius": 10, "last_points": None},
+    {"id": 4, "pos_hint": (0.7452, 0.2276), "radius": 10, "last_points": None},
+    {"id": 5, "pos_hint": (0.9331, 0.3715), "radius": 10, "last_points": None},
 ]
 
 MIN_READING = 0
@@ -51,7 +51,6 @@ def bt_auto_thread(hole_id, name_prefix):
     port = f"/dev/rfcomm{hole_id}"
     while True:
         try:
-            print(f"[BT] Scanning for {name_prefix}...")
             run_cmd("bluetoothctl scan on &")
             time.sleep(6)
             devices = run_cmd("bluetoothctl devices")
@@ -64,26 +63,21 @@ def bt_auto_thread(hole_id, name_prefix):
                         addr = parts[1]
                         break
             if not addr:
-                print(f"[BT] {name_prefix} not found; retrying in {BT_RETRY_DELAY}s")
                 time.sleep(BT_RETRY_DELAY)
                 continue
-            print(f"[BT] Found {name_prefix} at {addr}")
             run_cmd(f"bluetoothctl pair {addr}")
             run_cmd(f"bluetoothctl trust {addr}")
             run_cmd(f"bluetoothctl connect {addr}")
             run_cmd(f"sudo rfcomm release {hole_id} || true")
             run_cmd(f"sudo rfcomm bind {hole_id} {addr} 1")
-            print(f"[BT] Bound {addr} -> {port}")
             ser = None
             for _ in range(3):
                 try:
                     ser = serial.Serial(port, 9600, timeout=1)
-                    print(f"[BT] Listening on {port}")
                     break
                 except Exception:
                     time.sleep(1)
             if not ser:
-                print(f"[BT] Cannot open {port}, retrying...")
                 time.sleep(BT_RETRY_DELAY)
                 continue
             while True:
@@ -92,7 +86,6 @@ def bt_auto_thread(hole_id, name_prefix):
                     continue
                 msg = data.decode(errors="ignore").strip()
                 if msg:
-                    print(f"[BT][{name_prefix}] {msg}")
                     parts = msg.split(":")
                     if len(parts) >= 3 and parts[0] == "HOLE":
                         try:
@@ -108,7 +101,7 @@ def bt_auto_thread(hole_id, name_prefix):
             time.sleep(BT_RETRY_DELAY)
 
 # -----------------------
-# GolfGreen (one placement per round; labels update)
+# GolfGreen (final behavior)
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -128,7 +121,7 @@ class GolfGreen(Widget):
     # Only one placement allowed per round
     placed_this_round = BooleanProperty(False)
 
-    BALL_DISPLAY_SIZE = 6
+    BALL_DISPLAY_SIZE = 12   # bigger ball
     HOLE_COLOR = (1, 1, 1, 1)
     BALL_COLOR = (1, 1, 1, 1)
 
@@ -149,7 +142,7 @@ class GolfGreen(Widget):
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
                 Color(*self.HOLE_COLOR)
-                r = hole.get("radius", 8)
+                r = hole.get("radius", 10)
                 Ellipse(pos=(hx - r, hy - r), size=(r * 2, r * 2))
             if self.ball_placed:
                 Color(*self.BALL_COLOR)
@@ -179,11 +172,12 @@ class GolfGreen(Widget):
             hx, hy = self.get_scaled_hole_pos(hole)
             pts = hole.get("last_points")
             lbl.text = f"H{idx}: {pts}" if pts is not None else f"H{idx}: -"
-            # ensure label has a reasonable size
+            # compute and set size if needed
             w = lbl.width or 100
             h = lbl.height or 24
             lbl.size = (w, h)
-            offset_y = hole.get("radius", 8) + 12
+            # offset above hole
+            offset_y = hole.get("radius", 10) + 12
             x = hx - w / 2
             y = hy + offset_y
             # clamp to parent bounds
@@ -205,10 +199,13 @@ class GolfGreen(Widget):
         self.current_player = self.players[0] if self.players else ""
         self.placed_this_round = False
         print("Players registered:", self.players)
+        self._update_side_players_label()
+
+    def _update_side_players_label(self):
         try:
             side_players = self.parent.ids.get("players_label") if self.parent else None
             if side_players:
-                side_players.text = '\n'.join(["{}: {}".format(p, self.get_player_score(p)) for p in self.players])
+                side_players.text = '\n'.join(["{}: {}".format(p, self.get_player_score(p)) for p in self.players]) if self.players else "No players"
         except Exception:
             pass
 
@@ -224,12 +221,7 @@ class GolfGreen(Widget):
         self.current_player_index = 0
         self.current_player = self.players[0] if self.players else ""
         print(f"--- Advanced to round {self.current_round} ---")
-        try:
-            side_players = self.parent.ids.get("players_label") if self.parent else None
-            if side_players:
-                side_players.text = '\n'.join(["{}: {}".format(p, self.get_player_score(p)) for p in self.players]) if self.players else "No players"
-        except Exception:
-            pass
+        self._update_side_players_label()
 
     def handle_hole_event(self, hole_id):
         if self.placed_this_round:
@@ -260,7 +252,7 @@ class GolfGreen(Widget):
             print("Ignored placement; this round already had a placement.")
             return
 
-        # place ball visually (absolute coords -> local)
+        # place ball visually (absolute coords -> local coords)
         self.ball_x = hx - self.x
         self.ball_y = hy - self.y
         self.ball_placed = True
@@ -281,7 +273,7 @@ class GolfGreen(Widget):
         thx, thy = self.get_scaled_hole_pos(target_hole)
         dist = ((thx - hx) ** 2 + (thy - hy) ** 2) ** 0.5
 
-        radius = target_hole.get("radius", 8)
+        radius = target_hole.get("radius", 10)
         if dist <= radius:
             score = MAX_READING
             made_hole = True
@@ -304,6 +296,7 @@ class GolfGreen(Widget):
         # store last points on the hole and update KV labels
         target_hole["last_points"] = score
         self._update_kv_hole_labels()
+        self._update_side_players_label()
 
         # mark placement happened this round
         self.placed_this_round = True
@@ -331,6 +324,7 @@ class GolfGreen(Widget):
         self.ball_x, self.ball_y = -1000, -1000
         self.placed_this_round = False
         self._update_kv_hole_labels()
+        self._update_side_players_label()
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def start_game(self):
@@ -343,6 +337,7 @@ class GolfGreen(Widget):
             self.current_player = ""
         self.placed_this_round = False
         self._update_kv_hole_labels()
+        self._update_side_players_label()
 
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
@@ -383,11 +378,9 @@ def open_bt_terminal():
         if path:
             try:
                 subprocess.Popen([path] + args)
-                print(f"[BT] Opened bluetoothctl in {term}")
                 return True
-            except Exception as e:
-                print(f"[BT] Failed to launch {term}: {e}")
-    print("[BT] Could not find a terminal emulator. Run bluetoothctl manually.")
+            except Exception:
+                pass
     return False
 
 class RootWidget(BoxLayout):
