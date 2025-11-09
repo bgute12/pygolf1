@@ -74,7 +74,7 @@
 
         Label:
             id: players_label
-            text: '\\n'.join(["{}: {}".format(p, golf.get_player_score(p)) for p in golf.players]) if golf.players else "No players"
+            text: '\n'.join(["{}: {}".format(p, golf.get_player_score(p)) for p in golf.players]) if golf.players else "No players"
             text_size: self.width, None
             halign: "left"
             valign: "top"
