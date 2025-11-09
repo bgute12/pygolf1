@@ -315,7 +315,7 @@ class GolfGreen(Widget):
             hx, hy = self.get_scaled_hole_pos(hole)
             dist = math.hypot(hx - self.x - local_x, hy - self.y - local_y)
 
-            # Points purely based on distance (farther = higher points)
+            # Calculate points only — do NOT add yet
             pts = min(MAX_READING, int((dist / max_diag) * MAX_READING))
             hole["last_points"] = pts
 
@@ -323,17 +323,14 @@ class GolfGreen(Widget):
                 best_points = pts
                 nearest_hole = hole
 
-        
-        if self.current_player and nearest_hole:
-            self.player_scores.setdefault(self.current_player, []).append(best_points)
-            print(f"🏆 {self.current_player} scored {best_points} points for hole {nearest_hole['id']}")
-
-
-        # Set ball visual
+        # Just place the ball visually
         self.ball_x = local_x
         self.ball_y = local_y
         self.ball_placed = True
         self.update_canvas()
+        print(f"⚪ Ball placed by {self.current_player} (potential {best_points} pts for hole {nearest_hole['id']})")
+
+
     def award_hole_points(self, hole_id):
         current_time = now()
         if current_time - self.last_hole_time < self.hole_cooldown:
@@ -346,7 +343,6 @@ class GolfGreen(Widget):
             print(f"⚠️ Hole {hole_id} not found")
             return
 
-        # Use dynamic points from the hole or fallback
         pts = hole.get("last_points")
         if pts is None:
             pts = int(MAX_READING / 2)
@@ -356,14 +352,20 @@ class GolfGreen(Widget):
             print("⚠️ No active player to award points to")
             return
 
-        # Award points
+        # Award points only once
         self.player_scores.setdefault(player, []).append(pts)
         print(f"🏁 Hole {hole_id} → {player} scored {pts} points!")
 
         self.update_scores_display()
 
-        # Now safely move to the next player
+        # Reset for next player
+        self.ball_placed = False
+        self.ball_x = -1000
+        self.ball_y = -1000
+
         self.next_player()
+        self.update_canvas()
+
 
 
 
