@@ -11,7 +11,7 @@ from kivy.clock import Clock
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
-from kivy.graphics import Color, Ellipse
+from kivy.graphics import Color, Ellipse, Rectangle
 
 # -----------------------
 # Config
@@ -24,19 +24,12 @@ HOLES = [
     {"id": 5, "pos_hint": (0.9331, 0.3715), "radius": 8, "last_points": None},
 ]
 
-MIN_READING = 0
 MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
 # Device name prefixes for each hole’s ESP32/HC-05 module
-HOLE_NAME_PREFIXES = {
-    1: "HOLE_1",
-    2: "HOLE_2",
-    3: "HOLE_3",
-    4: "HOLE_4",
-    5: "HOLE_5",
-}
+HOLE_NAME_PREFIXES = {i: f"HOLE_{i}" for i in range(1, 6)}
 
 BT_RETRY_DELAY = 5  # seconds
 bt_event_queue = Queue()
@@ -98,7 +91,6 @@ def bt_auto_thread(hole_id, name_prefix):
                 time.sleep(BT_RETRY_DELAY)
                 continue
 
-            buffer = b""
             while True:
                 data = ser.readline()
                 if not data:
@@ -141,28 +133,27 @@ class GolfGreen(Widget):
         super().__init__(**kwargs)
         self.bind(size=self.update_canvas, pos=self.update_canvas)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
+        self.bg_texture = None
 
     def update_canvas(self, *args):
-        self.canvas.clear()  # clear everything
-        with self.canvas:
-            # Draw background first
-            self.bg_rect = None
-            if hasattr(self, 'background'):
-                Color(1, 1, 1, 1)
-                self.bg_rect = Rectangle(source='background.png', pos=self.pos, size=self.size)
+        self.canvas.before.clear()
+        with self.canvas.before:
+            # Draw background
+            Color(1, 1, 1, 1)
+            Rectangle(source="background.png", pos=self.pos, size=self.size)
 
+        self.canvas.after.clear()
+        with self.canvas.after:
             # Draw holes
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
                 Color(1, 1, 1, 1)
-                Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]), size=(hole["radius"]*2, hole["radius"]*2))
-
+                Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]),
+                        size=(hole["radius"]*2, hole["radius"]*2))
             # Draw ball if placed
             if self.ball_placed:
-                Color(1, 1, 1, 1)
-                Ellipse(pos=(self.x + self.ball_x - 5, self.y + self.ball_y - 5), size=(10, 10))
-
-
+                Color(1, 1, 0, 1)  # Yellow ball
+                Ellipse(pos=(self.x + self.ball_x - 4, self.y + self.ball_y - 4), size=(8, 8))
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -179,11 +170,6 @@ class GolfGreen(Widget):
         self.game_started = True
         print("Players registered:", self.players)
 
-    def get_player_score(self, player):
-        """Return total score for a player."""
-        scores = self.player_scores.get(player, [])
-        return sum(scores) if scores else 0
-
     def next_player(self):
         if not self.players: return
         self.current_player_index += 1
@@ -194,16 +180,15 @@ class GolfGreen(Widget):
         print(f"➡️ Next: {self.current_player} (Round {self.current_round})")
 
     def handle_hole_event(self, hole_id):
+        # Delay ball placing
+        Clock.schedule_once(lambda dt: self._place_ball(hole_id), 0.5)
+
+    def _place_ball(self, hole_id):
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
             print(f"Unknown hole {hole_id}")
             return
         hx, hy = self.get_scaled_hole_pos(hole)
-
-        # delay ball placement
-        Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.5)
-
-    def place_ball(self, hx, hy, hole_id):
         self.ball_x, self.ball_y, self.ball_placed = hx - self.x, hy - self.y, True
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
@@ -215,8 +200,9 @@ class RootWidget(BoxLayout): pass
 
 class MiniGolfApp(App):
     def build(self):
-        self.green = GolfGreen()
-        return self.green
+        self.root_widget = RootWidget()
+        self.green = self.root_widget.ids.golf
+        return self.root_widget
 
     def on_start(self):
         self.green.register_players(2)
