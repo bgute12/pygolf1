@@ -7,6 +7,7 @@ import serial
 from queue import Queue
 
 from kivy.app import App
+from kivy.lang import Builder
 from kivy.clock import Clock
 from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
 from kivy.uix.widget import Widget
@@ -53,7 +54,7 @@ def run_cmd(cmd):
         return ""
 
 # -----------------------
-# Auto Bluetooth Thread (no PyBluez)
+# Auto Bluetooth Thread
 # -----------------------
 def bt_auto_thread(hole_id, name_prefix):
     port = f"/dev/rfcomm{hole_id}"
@@ -145,14 +146,15 @@ class GolfGreen(Widget):
     def update_canvas(self, *args):
         self.canvas.after.clear()
         with self.canvas.after:
+            # Draw holes
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
                 Color(1, 1, 1, 1)
                 Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]), size=(hole["radius"]*2, hole["radius"]*2))
+            # Draw ball
             if self.ball_placed:
-                # smaller ball
                 Color(1, 1, 1, 1)
-                Ellipse(pos=(self.x + self.ball_x - 3, self.y + self.ball_y - 3), size=(6, 6))
+                Ellipse(pos=(self.x + self.ball_x - 6, self.y + self.ball_y - 6), size=(12, 12))
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -170,12 +172,12 @@ class GolfGreen(Widget):
         print("Players registered:", self.players)
 
     def get_player_score(self, player):
-        """Return total score for a player."""
         scores = self.player_scores.get(player, [])
         return sum(scores) if scores else 0
 
     def next_player(self):
-        if not self.players: return
+        if not self.players:
+            return
         self.current_player_index += 1
         if self.current_player_index >= len(self.players):
             self.current_player_index = 0
@@ -189,8 +191,7 @@ class GolfGreen(Widget):
             print(f"Unknown hole {hole_id}")
             return
         hx, hy = self.get_scaled_hole_pos(hole)
-
-        # delay ball placement
+        # Place ball with a short delay
         Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.5)
 
     def place_ball(self, hx, hy, hole_id):
@@ -201,17 +202,21 @@ class GolfGreen(Widget):
         Clock.schedule_once(lambda dt: self.next_player(), 1)
         self.update_canvas()
 
-class RootWidget(BoxLayout): pass
+    def clear_scores(self):
+        self.player_scores = {p: [] for p in self.players}
+        self.ball_placed = False
+        self.ball_x, self.ball_y = -1000, -1000
+        self.update_canvas()
 
-class MiniGolfApp(App):
-    def build(self):
-        self.green = GolfGreen()
-        return self.green
+    def start_game(self):
+        self.game_started = True
+        self.current_round = 1
+        if self.players:
+            self.current_player_index = 0
+            self.current_player = self.players[0]
 
-    def on_start(self):
-        self.green.register_players(2)
-        start_bt_threads()
-        Clock.schedule_interval(process_bt_queue, 0.1)
+class RootWidget(BoxLayout):
+    pass
 
 # -----------------------
 # Bluetooth integration
@@ -225,6 +230,21 @@ def process_bt_queue(dt):
 def start_bt_threads():
     for hid, prefix in HOLE_NAME_PREFIXES.items():
         threading.Thread(target=bt_auto_thread, args=(hid, prefix), daemon=True).start()
+
+# -----------------------
+# Kivy App
+# -----------------------
+class MiniGolfApp(App):
+    def build(self):
+        Builder.load_file("minigolf.kv")  # Load your KV file
+        self.green = RootWidget().ids.golf  # Access the GolfGreen inside RootWidget
+        Clock.schedule_interval(process_bt_queue, 0.1)
+        start_bt_threads()
+        return RootWidget()
+
+    def on_start(self):
+        # Register default 2 players
+        self.green.register_players(2)
 
 # -----------------------
 if __name__ == "__main__":
