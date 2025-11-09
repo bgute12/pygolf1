@@ -147,6 +147,21 @@ class GolfGreen(Widget):
     ball_radius = NumericProperty(6)
     last_hole_time = NumericProperty(0)
     hole_cooldown = 1.0
+    def hole_scored(self, hole_number):
+        if not self.game_started:
+            return
+
+        # Get current player
+        player = self.current_player
+
+        # Get hole points dynamically
+        hole_points = self.holes.get(hole_number, 0)
+
+        # Add to that player’s score
+        self.players[player] += hole_points
+
+        print(f"{player} scored {hole_points} on hole {hole_number}")
+
     
     def update_scores_display(self):
         if self.parent and self.parent.parent:  # RootWidget exists
@@ -254,18 +269,10 @@ class GolfGreen(Widget):
     def next_player(self):
         if not self.players:
             return
-        self.current_player_index += 1
-        if self.current_player_index >= len(self.players):
-            self.current_player_index = 0
-            self.current_round += 1
-            for h in self.holes:
-                h["last_points"] = None
-            self.ball_placed = False
-            self.ball_x = -1000
-            self.ball_y = -1000
-        self.current_player = self.players[self.current_player_index]
-        self.update_canvas()
-        print(f"Next player: {self.current_player} (Round {self.current_round})")
+
+        self.current_player_index = (self.current_player_index + 1) % len(self.players)
+        self.current_player = self.players_list[self.current_player_index]
+
 
     def clear_scores(self):
         self.player_scores = {p: [] for p in self.players}
