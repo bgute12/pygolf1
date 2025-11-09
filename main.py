@@ -270,8 +270,12 @@ class GolfGreen(Widget):
         if not self.players:
             return
 
+        # Cycle through the player list
         self.current_player_index = (self.current_player_index + 1) % len(self.players)
-        self.current_player = self.players_list[self.current_player_index]
+        self.current_player = self.players[self.current_player_index]
+
+        print(f"➡️ Next player: {self.current_player}")
+
 
 
     def clear_scores(self):
