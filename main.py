@@ -169,22 +169,38 @@ class GolfGreen(Widget):
 
     def _update_kv_hole_labels(self):
         # For each hole, update the corresponding KV Label's pos and text if it exists
+        parent = self.parent
+        if not parent:
+            return
+        parent_w, parent_h = parent.width, parent.height
+
         for idx, hole in enumerate(self.holes, start=1):
             lid = f"h{idx}"
-            lbl = self._safe_get_label(lid)
+            lbl = parent.ids.get(lid)
             if not lbl:
                 continue
+
             hx, hy = self.get_scaled_hole_pos(hole)
             pts = hole.get("last_points")
             lbl.text = f"H{idx}: {pts}" if pts is not None else f"H{idx}: -"
-            # center label above hole
+
+            # desired size and offset above the hole
             w = lbl.width or 100
             h = lbl.height or 24
-            # ensure label has size (some platforms need texture update)
-            if w == 0:
-                lbl.size = (100, 24)
-                w, h = lbl.size
-            lbl.pos = (hx - w / 2, hy + hole.get("radius", 8) + 6)
+            lbl.size = (w, h)
+
+            # vertical offset: hole radius + small margin (12 px)
+            offset_y = hole.get("radius", 8) + 12
+
+            # compute proposed position (centered horizontally on hole, above it)
+            x = hx - w / 2
+            y = hy + offset_y
+
+            # clamp to parent bounds so label stays visible
+            x = max(0, min(x, parent_w - w))
+            y = max(0, min(y, parent_h - h))
+
+            lbl.pos = (x, y)
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
