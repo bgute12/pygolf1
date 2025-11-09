@@ -30,7 +30,6 @@ MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
 
-# Device name prefixes for each hole’s ESP32/HC-05 module
 HOLE_NAME_PREFIXES = {
     1: "HOLE_1",
     2: "HOLE_2",
@@ -140,26 +139,32 @@ class GolfGreen(Widget):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.bind(size=self.update_canvas, pos=self.update_canvas)
+        # Bind redraws to relevant properties
+        self.bind(size=self.update_canvas,
+                  pos=self.update_canvas,
+                  ball_placed=self.update_canvas,
+                  ball_x=self.update_canvas,
+                  ball_y=self.update_canvas)
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def update_canvas(self, *args):
         self.canvas.after.clear()
         with self.canvas.after:
-            # Draw holes
+            # Draw holes (dark so ball shows up)
             for hole in self.holes:
                 hx, hy = self.get_scaled_hole_pos(hole)
-                Color(1, 1, 1, 1)
+                Color(0, 0, 0, 1)
                 Ellipse(pos=(hx - hole["radius"], hy - hole["radius"]), size=(hole["radius"]*2, hole["radius"]*2))
-            # Draw ball
+            # Draw ball (contrasting color)
             if self.ball_placed:
-                Color(1, 1, 1, 1)
+                Color(1, 0, 0, 1)
                 Ellipse(pos=(self.x + self.ball_x - 6, self.y + self.ball_y - 6), size=(12, 12))
 
     def get_scaled_hole_pos(self, hole):
+        # Use actual widget size (not max(1,...))
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
-        px = self.x + phx * max(1, self.width)
-        py = self.y + phy * max(1, self.height)
+        px = self.x + phx * self.width
+        py = self.y + phy * self.height
         return px, py
 
     def register_players(self, count=2):
@@ -191,22 +196,25 @@ class GolfGreen(Widget):
             print(f"Unknown hole {hole_id}")
             return
         hx, hy = self.get_scaled_hole_pos(hole)
-        # Place ball with a short delay
+        # Place ball with a short delay on main thread
         Clock.schedule_once(lambda dt: self.place_ball(hx, hy, hole_id), 0.5)
 
     def place_ball(self, hx, hy, hole_id):
-        self.ball_x, self.ball_y, self.ball_placed = hx - self.x, hy - self.y, True
+        # hx, hy are absolute coords; convert to local coords consistently
+        self.ball_x = hx - self.x
+        self.ball_y = hy - self.y
+        self.ball_placed = True
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
             print(f"🏆 {self.current_player} scored {MAX_READING} at hole {hole_id}")
         Clock.schedule_once(lambda dt: self.next_player(), 1)
-        self.update_canvas()
+        Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def clear_scores(self):
         self.player_scores = {p: [] for p in self.players}
         self.ball_placed = False
         self.ball_x, self.ball_y = -1000, -1000
-        self.update_canvas()
+        Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def start_game(self):
         self.game_started = True
@@ -236,16 +244,18 @@ def start_bt_threads():
 # -----------------------
 class MiniGolfApp(App):
     def build(self):
-        return RootWidget()
-
-
+        # Return the root widget created by the KV loader.
+        # This avoids instantiating RootWidget twice.
+        return Builder.load_file("minigolf.kv")
 
     def on_start(self):
-        # Assign green
+        # Assign green (expects an id 'golf' in your KV)
         self.green = self.root.ids.golf
         self.green.register_players(2)
 
+        # Start BT queue processor and threads
+        Clock.schedule_interval(process_bt_queue, 0.1)
+        start_bt_threads()
 
-# -----------------------
 if __name__ == "__main__":
     MiniGolfApp().run()
