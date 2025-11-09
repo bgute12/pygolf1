@@ -108,7 +108,7 @@ def bt_auto_thread(hole_id, name_prefix):
             time.sleep(BT_RETRY_DELAY)
 
 # -----------------------
-# GolfGreen (updates existing KV labels safely)
+# GolfGreen (one placement per round; labels update)
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -124,6 +124,8 @@ class GolfGreen(Widget):
 
     MAX_SCORE_RADIUS = 200
     _pending_place_ev = None
+
+    # Only one placement allowed per round
     placed_this_round = BooleanProperty(False)
 
     BALL_DISPLAY_SIZE = 6
@@ -132,14 +134,12 @@ class GolfGreen(Widget):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # update positions and labels when needed
         self.bind(size=self._on_layout_change, pos=self._on_layout_change,
                   ball_placed=self._on_layout_change, ball_x=self._on_layout_change,
                   ball_y=self._on_layout_change, current_round=lambda *a: self._on_layout_change())
         Clock.schedule_once(lambda dt: self._on_layout_change(), 0)
 
     def _on_layout_change(self, *args):
-        # redraw canvas and update the five labels that exist in the FloatLayout
         self.update_canvas()
         self._update_kv_hole_labels()
 
@@ -157,18 +157,15 @@ class GolfGreen(Widget):
                 Ellipse(pos=(self.x + self.ball_x - size / 2, self.y + self.ball_y - size / 2), size=(size, size))
 
     def _safe_get_label(self, lid):
-        # labels live in the same FloatLayout parent; they are named h1..h5 in KV
         try:
             parent = self.parent
             if not parent:
                 return None
-            # parent is FloatLayout, its ids are in parent.ids
             return parent.ids.get(lid)
         except Exception:
             return None
 
     def _update_kv_hole_labels(self):
-        # For each hole, update the corresponding KV Label's pos and text if it exists
         parent = self.parent
         if not parent:
             return
@@ -179,27 +176,19 @@ class GolfGreen(Widget):
             lbl = parent.ids.get(lid)
             if not lbl:
                 continue
-
             hx, hy = self.get_scaled_hole_pos(hole)
             pts = hole.get("last_points")
             lbl.text = f"H{idx}: {pts}" if pts is not None else f"H{idx}: -"
-
-            # desired size and offset above the hole
+            # ensure label has a reasonable size
             w = lbl.width or 100
             h = lbl.height or 24
             lbl.size = (w, h)
-
-            # vertical offset: hole radius + small margin (12 px)
             offset_y = hole.get("radius", 8) + 12
-
-            # compute proposed position (centered horizontally on hole, above it)
             x = hx - w / 2
             y = hy + offset_y
-
-            # clamp to parent bounds so label stays visible
+            # clamp to parent bounds
             x = max(0, min(x, parent_w - w))
             y = max(0, min(y, parent_h - h))
-
             lbl.pos = (x, y)
 
     def get_scaled_hole_pos(self, hole):
@@ -216,7 +205,6 @@ class GolfGreen(Widget):
         self.current_player = self.players[0] if self.players else ""
         self.placed_this_round = False
         print("Players registered:", self.players)
-        # update side panel players_label via parent ids safely
         try:
             side_players = self.parent.ids.get("players_label") if self.parent else None
             if side_players:
@@ -229,16 +217,13 @@ class GolfGreen(Widget):
         return sum(scores) if scores else 0
 
     def _advance_round_after_single_placement(self):
-        # Advance round as requested; ensure placed flag resets for next round
-        self.placed_this_round = True
+        # Advance round (called when placement was NOT in the hole)
         self.current_round += 1
-        # reset placed flag so next round allows a placement
-        self.placed_this_round = False
-        # reset current player to first (safe even if no players)
+        self.placed_this_round = False  # allow next round placement
+        # reset current player index to 0 (safe)
         self.current_player_index = 0
         self.current_player = self.players[0] if self.players else ""
         print(f"--- Advanced to round {self.current_round} ---")
-        # update side panel player scores text
         try:
             side_players = self.parent.ids.get("players_label") if self.parent else None
             if side_players:
@@ -275,11 +260,12 @@ class GolfGreen(Widget):
             print("Ignored placement; this round already had a placement.")
             return
 
+        # place ball visually (absolute coords -> local)
         self.ball_x = hx - self.x
         self.ball_y = hy - self.y
         self.ball_placed = True
 
-        # compute nearest hole and score
+        # compute nearest hole and distance
         nearest = None; nearest_d = None
         for hole in self.holes:
             phx, phy = self.get_scaled_hole_pos(hole)
@@ -298,27 +284,43 @@ class GolfGreen(Widget):
         radius = target_hole.get("radius", 8)
         if dist <= radius:
             score = MAX_READING
+            made_hole = True
         elif dist >= self.MAX_SCORE_RADIUS:
             score = MIN_READING
+            made_hole = False
         else:
             frac = (dist - radius) / max(1, (self.MAX_SCORE_RADIUS - radius))
             score = int(round(MAX_READING - frac * (MAX_READING - MIN_READING)))
             score = max(MIN_READING, min(MAX_READING, score))
+            made_hole = False
 
-        # Attribute to current player safely
+        # credit current player if present
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(score)
             print(f"{self.current_player} scored {score} (dist={int(dist)} px) at hole {target_hole['id']}")
         else:
             print(f"No current player to credit; scored {score} at hole {target_hole['id']}")
 
-        # save last points on the hole and update KV labels
+        # store last points on the hole and update KV labels
         target_hole["last_points"] = score
         self._update_kv_hole_labels()
 
-        # mark placement happened and advance round
+        # mark placement happened this round
         self.placed_this_round = True
-        Clock.schedule_once(lambda dt: self._advance_round_after_single_placement(), 0.1)
+
+        # Behavior after placement:
+        # - If ball made the hole: advance to next player (ball stays where it is)
+        # - Otherwise: advance the round (single placement per round)
+        if made_hole:
+            if self.players:
+                self.current_player_index = (self.current_player_index + 1) % len(self.players)
+                self.current_player = self.players[self.current_player_index]
+            else:
+                self.current_player = ""
+            print(f"➡️ Next player: {self.current_player} (round {self.current_round})")
+        else:
+            Clock.schedule_once(lambda dt: self._advance_round_after_single_placement(), 0.3)
+
         Clock.schedule_once(lambda dt: self.update_canvas(), 0)
 
     def clear_scores(self):

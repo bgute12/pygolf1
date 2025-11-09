@@ -106,7 +106,6 @@
             size_hint_y: None
             height: 40
             on_release:
-                # safe next_player: check players exist before calling
                 app.root.ids.golf.next_player() if app.root and app.root.ids and app.root.ids.golf.players else None
 
         Label:
