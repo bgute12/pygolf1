@@ -12,13 +12,13 @@
             allow_stretch: True
             keep_ratio: True
             size_hint: 1, 1
-            pos: self.pos
+            pos_hint: {'x':0, 'y':0}
 
-        # Golf Green overlay
+        # GolfGreen overlay
         GolfGreen:
             id: golf
-            size: self.size
-            pos: self.pos
+            size_hint: 1, 1
+            pos_hint: {'x':0, 'y':0}
 
         # Hole Labels
         Label:
@@ -71,95 +71,48 @@
                 size: self.size
 
         # Current Player Info
+        Label:
+            text: "Current Player: " + (golf.current_player if golf.current_player else "None")
+            size_hint_y: None
+            height: 28
+
+        # Players Scores
+        Label:
+            id: players_label
+            text: '\n'.join(["{}: {}".format(p, golf.get_player_score(p)) for p in golf.players]) if golf.players else "No players"
+            text_size: self.width, None
+            halign: "left"
+            valign: "top"
+            size_hint_y: None
+            height: self.texture_size[1] or 60
+
+        # Player buttons
         BoxLayout:
             size_hint_y: None
             height: 40
-            spacing: 6
-            opacity: 1 if (golf.mode_selected and golf.mode == "Normal") else 0
-            Label:
-                text: "Current Player: " + (golf.current_player if golf.current_player else "None")
-                size_hint_y: None
-                height: 28
+            spacing: 5
+            Button:
+                text: "1 Player"
+                on_release: golf.register_players(1)
+            Button:
+                text: "2 Players"
+                on_release: golf.register_players(2)
+            Button:
+                text: "3 Players"
+                on_release: golf.register_players(3)
 
-        # Normal Mode Controls
-        BoxLayout:
-            orientation: "vertical"
-            spacing: 8
+        # Game controls
+        Button:
+            text: "Start Game"
             size_hint_y: None
-            height: self.minimum_height
-            opacity: 1 if (golf.mode_selected and golf.mode == "Normal") else 0
-            disabled: not (golf.mode_selected and golf.mode == "Normal")
-
-            Label:
-                text: "Players:"
-                size_hint_y: None
-                height: 24
-
-            Label:
-                id: players_label
-                text: '\n'.join(["{}: {}".format(p, golf.get_player_score(p)) for p in golf.players]) if golf.players else "No players"
-                text_size: self.width, None
-                halign: "left"
-                valign: "top"
-                size_hint_y: None
-                height: self.texture_size[1] or 60
-
-            BoxLayout:
-                size_hint_y: None
-                height: 40
-                spacing: 5
-                Button:
-                    text: "1 Player"
-                    on_release: golf.register_players(1)
-                Button:
-                    text: "2 Players"
-                    on_release: golf.register_players(2)
-                Button:
-                    text: "3 Players"
-                    on_release: golf.register_players(3)
-
-            Button:
-                text: "Start Game"
-                size_hint_y: None
-                height: 40
-                on_release: golf.start_game()
-
-            Button:
-                text: "Next Player"
-                size_hint_y: None
-                height: 40
-                on_release: golf.next_player()
-
-            Label:
-                text: "Round: " + str(golf.current_round)
-                size_hint_y: None
-                height: 28
-
-        # Practice Mode Controls
-        BoxLayout:
-            orientation: "vertical"
-            spacing: 8
+            height: 40
+            on_release: golf.start_game()
+        Button:
+            text: "Next Player"
             size_hint_y: None
-            height: self.minimum_height
-            opacity: 1 if (golf.mode_selected and golf.mode == "Practice") else 0
-            disabled: not (golf.mode_selected and golf.mode == "Practice")
-
-            Label:
-                text: "Practice Mode active"
-                size_hint_y: None
-                height: 28
-            Button:
-                text: "Replace Ball (Practice)"
-                size_hint_y: None
-                height: 40
-                on_release:
-                    golf.ball_placed = False
-                    golf.ball_x = -1000
-                    golf.ball_y = -1000
-                    golf.update_canvas()
-            Button:
-                text: "Clear Scores"
-                size_hint_y: None
-                height: 40
-                on_release:
-                    golf.clear_scores()
+            height: 40
+            on_release: golf.next_player()
+        Label:
+            text: "Round: " + str(golf.current_round)
+            size_hint_y: None
+            height: 28
