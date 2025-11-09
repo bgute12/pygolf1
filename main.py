@@ -316,6 +316,8 @@ class RootWidget(BoxLayout):
 
 class MiniGolfApp(App):
     def build(self):
+        Clock.schedule_interval(process_bt_queue, 0.1)
+        start_bt_threads()
         return RootWidget()
 
 
