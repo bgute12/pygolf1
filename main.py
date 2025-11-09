@@ -212,17 +212,18 @@ class RootWidget(BoxLayout):
 # -----------------------
 class MiniGolfApp(App):
     def build(self):
-        # Root widget contains GolfGreen + side panel (if needed in KV)
+        # Load the KV-defined RootWidget
+        from kivy.lang import Builder
+        Builder.load_file("minigolf.kv")
         root = RootWidget()
-        self.green = GolfGreen()
-        root.add_widget(self.green)  # Only GolfGreen; background is inside GolfGreen
+        self.green = root.ids.golf  # access GolfGreen from KV
         return root
-
 
     def on_start(self):
         self.green.register_players(2)
         start_bt_threads()
         Clock.schedule_interval(process_bt_queue, 0.1)
+
 
 # -----------------------
 # Bluetooth integration
