@@ -1,17 +1,17 @@
-# minigolf_ble.py
+# minigolf_with_bt.py
 import math
-import asyncio
+import threading
+import time
 from queue import Queue
-from threading import Thread
 
 from kivy.app import App
 from kivy.clock import Clock
-from kivy.properties import ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
+from kivy.properties import (
+    ListProperty, NumericProperty, StringProperty, DictProperty, BooleanProperty
+)
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, Ellipse
-
-from bleak import BleakScanner, BleakClient
 
 # -----------------------
 # Config
@@ -24,11 +24,12 @@ HOLES = [
     {"id": 5, "pos_hint": (0.9331, 0.3715), "radius": 8, "last_points": None},
 ]
 
+MIN_READING = 0
+MAX_READING = 10
 MAX_PLAYERS = 3
 MAX_ROUNDS = 10
-MAX_READING = 10
 
-# Names or partial names of BLE devices for each hole
+# Hole names for BT scanning
 HOLE_NAME_PREFIXES = {
     1: "HOLE_1",
     2: "HOLE_2",
@@ -37,12 +38,14 @@ HOLE_NAME_PREFIXES = {
     5: "HOLE_5",
 }
 
-# BLE event queue
-ble_event_queue = Queue()
+# Bluetooth reconnect delay (seconds)
+BT_RETRY_DELAY = 5
 
+# Queue for passing BT events to Kivy main thread
+bt_event_queue = Queue()
 
 # -----------------------
-# Kivy Golf Widget
+# Kivy GUI / Game Code
 # -----------------------
 class GolfGreen(Widget):
     players = ListProperty([])
@@ -50,6 +53,7 @@ class GolfGreen(Widget):
     current_round = NumericProperty(1)
     current_player = StringProperty("")
     player_scores = DictProperty({})
+    live_text = StringProperty("")
     live_points_by_hole = DictProperty({})
     ball_x = NumericProperty(-1000)
     ball_y = NumericProperty(-1000)
@@ -79,7 +83,11 @@ class GolfGreen(Widget):
                         size=(hole["radius"] * 2, hole["radius"] * 2))
             if self.ball_placed:
                 Color(1, 1, 1, 1)
-                Ellipse(pos=(self.x + self.ball_x - 5, self.y + self.ball_y - 5), size=(10, 10))  # smaller ball
+                Ellipse(pos=(self.x + self.ball_x - 10, self.y + self.ball_y - 10), size=(10, 10))
+
+    def get_player_score(self, name):
+        scores = self.player_scores.get(name, [])
+        return sum(scores) if scores else 0
 
     def register_players(self, count=1):
         count = max(1, min(count, MAX_PLAYERS))
@@ -91,18 +99,15 @@ class GolfGreen(Widget):
         self.ball_placed = False
         self.game_started = False
         self.update_canvas()
-        print("Registered players:", self.players)
 
     def start_game(self):
         if not self.players:
-            print("No players")
             return
         self.game_started = True
         self.ball_placed = False
         self.current_player_index = 0
         self.current_player = self.players[self.current_player_index]
         self.update_canvas()
-        print("Game started. Current player:", self.current_player)
 
     def next_player(self):
         if not self.players:
@@ -112,14 +117,16 @@ class GolfGreen(Widget):
             self.current_player_index = 0
             self.current_round += 1
             if self.current_round > MAX_ROUNDS:
-                print("Game over")
                 return
             self.ball_placed = False
             self.ball_x = -1000
             self.ball_y = -1000
         self.current_player = self.players[self.current_player_index]
         self.update_canvas()
-        print(f"Next player: {self.current_player} (Round {self.current_round})")
+
+    def clear_scores(self):
+        self.player_scores = {p: [] for p in self.players}
+        self.update_canvas()
 
     def get_scaled_hole_pos(self, hole):
         phx, phy = hole.get("pos_hint", (0.5, 0.5))
@@ -127,31 +134,20 @@ class GolfGreen(Widget):
         py = self.y + phy * max(0, self.height)
         return px, py
 
-    def get_player_score(self, name):
-        return sum(self.player_scores.get(name, []))
-
-    # BLE event handler
     def handle_hole_event(self, hole_id):
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
-            print("Unknown hole id", hole_id)
             return
         hx, hy = self.get_scaled_hole_pos(hole)
-        local_x = hx - self.x
-        local_y = hy - self.y
-        self.ball_x = local_x
-        self.ball_y = local_y
+        self.ball_x = hx - self.x
+        self.ball_y = hy - self.y
         self.ball_placed = True
         if self.current_player:
             self.player_scores.setdefault(self.current_player, []).append(MAX_READING)
-            print(f"🏆 {self.current_player} scored {MAX_READING} at hole {hole_id}")
         Clock.schedule_once(lambda dt: self.next_player(), 1.0)
         self.update_canvas()
 
 
-# -----------------------
-# Kivy App
-# -----------------------
 class RootWidget(BoxLayout):
     pass
 
@@ -159,36 +155,52 @@ class RootWidget(BoxLayout):
 class MiniGolfApp(App):
     def build(self):
         root = RootWidget()
-        self.green = root.ids.get("golf") or root.children[0]
+        self.green = root.ids.get("golf")
+        # start Bluetooth polling
+        Clock.schedule_interval(self.process_bt_queue, 0.1)
         return root
 
     def on_start(self):
         if self.green:
             self.green.register_players(2)
             self.green.start_game()
-        # start BLE scanning in background
-        Thread(target=self.ble_loop_thread, daemon=True).start()
-        Clock.schedule_interval(self.process_ble_queue, 0.1)
+        # start BT threads for each hole
+        start_bluetooth_threads(self.on_bt_event)
 
-    def process_ble_queue(self, dt):
-        while not ble_event_queue.empty():
-            hole_id = ble_event_queue.get_nowait()
-            if self.green:
-                self.green.handle_hole_event(hole_id)
+    def on_bt_event(self, hole_id):
+        if self.green:
+            self.green.handle_hole_event(hole_id)
 
-    def ble_loop_thread(self):
-        asyncio.run(self.ble_loop())
+    def process_bt_queue(self, dt):
+        while not bt_event_queue.empty():
+            try:
+                hole_id = bt_event_queue.get_nowait()
+                Clock.schedule_once(lambda dt, hid=hole_id: self.on_bt_event(hid), 0)
+            except Exception as e:
+                print("Error processing BT queue:", e)
 
-    async def ble_loop(self):
-        while True:
-            devices = await BleakScanner.discover()
-            for hole_id, prefix in HOLE_NAME_PREFIXES.items():
-                for d in devices:
-                    if d.name and prefix in d.name:
-                        print(f"[BLE] Found {prefix}: {d.address}")
-                        # simulate hole hit for testing
-                        ble_event_queue.put(hole_id)
-            await asyncio.sleep(5)
+
+# -----------------------
+# Bluetooth background code
+# -----------------------
+def bt_listen_thread(hole_id, name_prefix, callback):
+    """
+    Thread: simulate connecting to device with name_prefix.
+    Pushes events into bt_event_queue.
+    Replace this with your working BT code.
+    """
+    import random
+    while True:
+        # simulate a hole trigger randomly every 10-30s
+        time.sleep(random.randint(10, 30))
+        print(f"[BT] Simulated event: Hole {hole_id}")
+        bt_event_queue.put(hole_id)
+
+
+def start_bluetooth_threads(main_thread_callback):
+    for hole_id, prefix in HOLE_NAME_PREFIXES.items():
+        t = threading.Thread(target=bt_listen_thread, args=(hole_id, prefix, main_thread_callback), daemon=True)
+        t.start()
 
 
 if __name__ == "__main__":
