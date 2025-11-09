@@ -144,6 +144,8 @@ class GolfGreen(Widget):
     mode_selected = BooleanProperty(True)
     game_started = BooleanProperty(False)
     ball_radius = NumericProperty(6)
+    last_hole_time = NumericProperty(0)
+    hole_cooldown = 1.0
     
     def update_scores_display(self):
         if self.parent and self.parent.parent:  # RootWidget exists
@@ -321,19 +323,22 @@ class GolfGreen(Widget):
         self.ball_placed = True
         self.update_canvas()
     def award_hole_points(self, hole_id):
-        # Find the hole that was triggered
+        current_time = now()
+        if current_time - self.last_hole_time < self.hole_cooldown:
+            # Prevent double trigger
+            print(f"⏳ Ignored duplicate trigger for hole {hole_id}")
+            return
+        self.last_hole_time = current_time
+
+        # Find hole data
         hole = next((h for h in self.holes if h["id"] == hole_id), None)
         if not hole:
             print(f"⚠️ Hole {hole_id} not found")
             return
 
-        # Use the hole’s last calculated points or default to a mid value
+        # Use last points or default to 5
         pts = hole.get("last_points")
         if pts is None:
-            # If no last_points, estimate based on hole position distance
-            hx, hy = self.get_scaled_hole_pos(hole)
-            max_diag = math.hypot(max(1, self.width), max(1, self.height))
-            # Just a default mid score if unknown
             pts = int(MAX_READING / 2)
 
         player = self.current_player
@@ -341,35 +346,32 @@ class GolfGreen(Widget):
             print("⚠️ No active player to award points to")
             return
 
-        # Add points to current player
-        self.player_scores.setdefault(player, []).append(pts)
+        # Award points safely only once per player
+        if not self.player_scores.get(player):
+            self.player_scores[player] = []
+
         print(f"🏁 Hole {hole_id} → {player} scored {pts} points!")
 
-        # Update UI label
+        self.player_scores[player].append(pts)
         self.update_scores_display()
 
-        # ✅ Automatically move to the next player
+        # Move to next player
         self.next_player()
 
 
-
-
-
-
-# -----------------------
-# Bluetooth integration
-# -----------------------
 def process_bt_queue(dt):
     app = App.get_running_app()
     if not app or not hasattr(app.root, 'ids'):
         return
 
-    # Access the GolfGreen widget
-    try:
-        golf_widget = app.root.ids.get("golf")
-    except Exception as e:
-        print("⚠️ Error getting golf widget:", e)
+    golf_widget = app.root.ids.get("golf", None)
+    if not golf_widget or not isinstance(golf_widget, GolfGreen):
         return
+
+    while not bt_event_queue.empty():
+        hid = bt_event_queue.get_nowait()
+        print(f"[BT EVENT] Hole {hid} triggered")
+        golf_widget.award_hole_points(hid)
 
     while not bt_event_queue.empty():
         hid = bt_event_queue.get_nowait()
