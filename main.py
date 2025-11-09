@@ -309,10 +309,11 @@ class GolfGreen(Widget):
                 best_points = pts
                 nearest_hole = hole
 
-        # Update current player's score with calculated points
+        
         if self.current_player and nearest_hole:
             self.player_scores.setdefault(self.current_player, []).append(best_points)
             print(f"🏆 {self.current_player} scored {best_points} points for hole {nearest_hole['id']}")
+
 
         # Set ball visual
         self.ball_x = local_x
