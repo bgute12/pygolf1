@@ -237,10 +237,8 @@ def start_bt_threads():
 class MiniGolfApp(App):
     def build(self):
         Builder.load_file("minigolf.kv")
-        Clock.schedule_interval(process_bt_queue, 0.1)
-        start_bt_threads()
-        # Do NOT return RootWidget manually
-        return self.root  # Kivy will auto-create RootWidget from KV
+        return RootWidget()  # make sure this exists and is the top widget
+
 
     def on_start(self):
         # Assign green
