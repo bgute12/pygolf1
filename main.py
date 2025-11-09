@@ -217,14 +217,25 @@ class GolfGreen(Widget):
     def start_game(self):
         if not self.players:
             return
+
+        # Reset all player scores and hole data
+        self.player_scores = {p: [] for p in self.players}
+        for h in HOLES:
+            h["last_points"] = None
+        self.holes = HOLES.copy()
+
+        # Reset ball + round
         self.game_started = True
         self.ball_placed = False
         self.current_player_index = 0
+        self.current_round = 1
         self.current_player = self.players[0]
         self.ball_x = -1000
         self.ball_y = -1000
+        self.update_scores_display()
         self.update_canvas()
-        print("Game started. Current player:", self.current_player)
+        print("🟢 Game started. Scores reset. Current player:", self.current_player)
+
 
     def replace_ball(self):
         if not self.game_started or self.current_player_index != 0:
